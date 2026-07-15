@@ -1,0 +1,13 @@
+{
+  "name": "marshallcloud-jukebox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted party jukebox for Spotify, Home Assistant, and Sonos.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

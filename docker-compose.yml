@@ -1,0 +1,21 @@
+services:
+  jukebox:
+    build:
+      context: .
+    container_name: marshallcloud-jukebox
+    restart: unless-stopped
+    ports:
+      - "3080:3000"
+    environment:
+      PORT: "3000"
+      APP_NAME: "MarshallCloud Jukebox"
+      PUBLIC_URL: "https://jukebox.marshallcloud.net"
+
+      # Add these in later milestones. Keep secrets out of source control.
+      SPOTIFY_CLIENT_ID: ""
+      SPOTIFY_CLIENT_SECRET: ""
+      SPOTIFY_REDIRECT_URI: "https://jukebox.marshallcloud.net/auth/callback"
+
+      HA_URL: ""
+      HA_TOKEN: ""
+      HA_MEDIA_PLAYER: "media_player.connect"

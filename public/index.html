@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d0f12">
+  <title>MarshallCloud Jukebox</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MARSHALLCLOUD</p>
+        <h1>Jukebox</h1>
+      </div>
+      <button class="host-button" type="button" aria-label="Open host controls">Host</button>
+    </header>
+
+    <main>
+      <section class="now-playing card">
+        <div class="section-heading">
+          <span class="status-dot"></span>
+          <span>Now playing</span>
+        </div>
+
+        <div class="track-layout">
+          <div class="album-art" aria-label="Album artwork placeholder">
+            <svg viewBox="0 0 120 120" role="img" aria-label="Music note">
+              <rect width="120" height="120" rx="20"></rect>
+              <path d="M74 27v52.5a15 15 0 1 1-7-12.7V40l32-7v38.5a15 15 0 1 1-7-12.7V27z"></path>
+            </svg>
+          </div>
+          <div class="track-copy">
+            <p class="track-title">Ready for the party</p>
+            <p class="track-artist">Spotify and Sonos connection coming next</p>
+            <div class="progress">
+              <div class="progress-fill"></div>
+            </div>
+            <div class="time-row">
+              <span>0:00</span>
+              <span>0:00</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="search-panel">
+        <label for="search">Search Spotify</label>
+        <div class="search-box">
+          <span aria-hidden="true">⌕</span>
+          <input id="search" type="search" placeholder="Search for a song or artist" disabled>
+        </div>
+        <p class="helper">Search will activate after Spotify authentication is connected.</p>
+      </section>
+
+      <section class="queue-section">
+        <div class="queue-heading">
+          <div>
+            <p class="eyebrow">COMING UP</p>
+            <h2>Party queue</h2>
+          </div>
+          <span class="queue-count">0 songs</span>
+        </div>
+
+        <div class="empty-state card">
+          <div class="empty-icon">♫</div>
+          <h3>The queue is empty</h3>
+          <p>Once Spotify is connected, guests will be able to search and request songs here.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span id="health">Checking server…</span>
+      <span>v0.1.0</span>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
