@@ -14,6 +14,9 @@ const HA_TOKEN = process.env.HA_TOKEN || "";
 const HA_MEDIA_PLAYER = process.env.HA_MEDIA_PLAYER || "media_player.connect";
 const TOKEN_FILE = path.join(DATA_DIR, "spotify-token.json");
 const REQUESTS_FILE = path.join(DATA_DIR, "requests.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+const ADMIN_PIN = process.env.ADMIN_PIN || "";
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const publicDir = path.join(__dirname, "public");
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -72,6 +75,57 @@ function readRequests() {
 function writeRequests(requests) {
   fs.writeFileSync(REQUESTS_FILE, JSON.stringify(requests.slice(-500), null, 2), { mode: 0o600 });
 }
+
+function readSettings() {
+  try {
+    const value = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8"));
+    return { requests_locked: Boolean(value.requests_locked) };
+  } catch {
+    return { requests_locked: false };
+  }
+}
+
+function writeSettings(settings) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
+
+function parseCookies(req) {
+  const cookies = {};
+  const header = req.headers.cookie || "";
+  for (const part of header.split(";")) {
+    const index = part.indexOf("=");
+    if (index < 0) continue;
+    cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+  }
+  return cookies;
+}
+
+function signSession(value) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update(value).digest("hex");
+}
+
+function createAdminSession() {
+  const expires = Date.now() + 12 * 60 * 60 * 1000;
+  const value = String(expires);
+  return `${value}.${signSession(value)}`;
+}
+
+function isAdmin(req) {
+  const token = parseCookies(req).jukebox_admin || "";
+  const [value, signature] = token.split(".");
+  if (!value || !signature || Number(value) < Date.now()) return false;
+  const expected = signSession(value);
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
+function setAdminCookie(res, token) {
+  res.setHeader("Set-Cookie", `jukebox_admin=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=43200`);
+}
+
 
 function normalizeGuestName(value) {
   if (typeof value !== "string") return "Guest";
@@ -238,7 +292,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       status: "ok",
       app: "MarshallCloud Jukebox",
-      version: "0.5.0",
+      version: "0.6.0",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -261,7 +315,8 @@ async function handleApi(req, res, url) {
       spotifyUser: profile ? {
         id: profile.id,
         display_name: profile.display_name
-      } : null
+      } : null,
+      requestsLocked: readSettings().requests_locked
     });
   }
 
@@ -297,6 +352,31 @@ async function handleApi(req, res, url) {
     }
   }
 
+
+
+  if (url.pathname === "/api/now-playing" && req.method === "GET") {
+    try {
+      const state = await getMediaPlayerState();
+      const a = state?.attributes || {};
+      let position = Number(a.media_position || 0);
+      if (state?.state === "playing" && a.media_position_updated_at) {
+        const updated = Date.parse(a.media_position_updated_at);
+        if (Number.isFinite(updated)) position += Math.max(0, (Date.now() - updated) / 1000);
+      }
+      return sendJson(res, 200, {
+        state: state?.state || "unknown",
+        title: a.media_title || "Nothing playing",
+        artist: a.media_artist || "",
+        album: a.media_album_name || "",
+        artwork: a.entity_picture || "",
+        position: Math.max(0, position),
+        duration: Number(a.media_duration || 0),
+        volume: Number(a.volume_level || 0)
+      });
+    } catch (error) {
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
 
   if (url.pathname === "/api/queue" && req.method === "GET") {
     try {
@@ -354,6 +434,9 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/queue" && req.method === "POST") {
     try {
+      if (readSettings().requests_locked) {
+        return sendJson(res, 423, { error: "Song requests are currently locked by the host." });
+      }
       const body = await readJsonBody(req);
       if (!validateSpotifyTrackUri(body.uri)) {
         return sendJson(res, 400, { error: "A valid Spotify track URI is required." });
@@ -411,6 +494,54 @@ async function handleApi(req, res, url) {
       });
     } catch (error) {
       console.error("Queue request failed:", error.message);
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
+
+
+  if (url.pathname === "/api/admin/status" && req.method === "GET") {
+    return sendJson(res, 200, {
+      authenticated: isAdmin(req),
+      configured: Boolean(ADMIN_PIN),
+      requestsLocked: readSettings().requests_locked
+    });
+  }
+
+  if (url.pathname === "/api/admin/login" && req.method === "POST") {
+    if (!ADMIN_PIN) return sendJson(res, 503, { error: "ADMIN_PIN is not configured." });
+    const body = await readJsonBody(req);
+    const supplied = String(body.pin || "");
+    const valid = supplied.length === ADMIN_PIN.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(ADMIN_PIN));
+    if (!valid) return sendJson(res, 401, { error: "Incorrect PIN." });
+    setAdminCookie(res, createAdminSession());
+    return sendJson(res, 200, { authenticated: true });
+  }
+
+  if (url.pathname === "/api/admin/control" && req.method === "POST") {
+    if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin authentication required." });
+    try {
+      const body = await readJsonBody(req);
+      const action = String(body.action || "");
+      if (action === "play") {
+        await homeAssistantRequest("/api/services/media_player/media_play", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER }) });
+      } else if (action === "pause") {
+        await homeAssistantRequest("/api/services/media_player/media_pause", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER }) });
+      } else if (action === "next") {
+        await homeAssistantRequest("/api/services/media_player/media_next_track", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER }) });
+      } else if (action === "volume") {
+        const volume = Math.min(1, Math.max(0, Number(body.volume)));
+        if (!Number.isFinite(volume)) return sendJson(res, 400, { error: "Invalid volume." });
+        await homeAssistantRequest("/api/services/media_player/volume_set", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER, volume_level: volume }) });
+      } else if (action === "lock") {
+        const settings = readSettings();
+        settings.requests_locked = Boolean(body.locked);
+        writeSettings(settings);
+        return sendJson(res, 200, { ok: true, requestsLocked: settings.requests_locked });
+      } else {
+        return sendJson(res, 400, { error: "Unknown admin action." });
+      }
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
       return sendJson(res, error.statusCode || 500, { error: error.message });
     }
   }
@@ -486,7 +617,7 @@ async function handleRequest(req, res) {
     return sendJson(res, 404, { error: "Not found" });
   }
 
-  let relativePath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+  let relativePath = url.pathname === "/" ? "index.html" : (url.pathname === "/admin" ? "admin.html" : url.pathname.slice(1));
   relativePath = path.normalize(relativePath).replace(/^(\.\.[/\\])+/, "");
   let filePath = path.join(publicDir, relativePath);
 
@@ -520,5 +651,5 @@ http.createServer((req, res) => {
     sendJson(res, 500, { error: "Internal server error" });
   });
 }).listen(PORT, "0.0.0.0", () => {
-  console.log(`MarshallCloud Jukebox v0.5.0 listening on port ${PORT}`);
+  console.log(`MarshallCloud Jukebox v0.6.0 listening on port ${PORT}`);
 });

@@ -15,6 +15,8 @@ services:
       HA_URL: "${HA_URL:-}"
       HA_TOKEN: "${HA_TOKEN:-}"
       HA_MEDIA_PLAYER: "${HA_MEDIA_PLAYER:-media_player.connect}"
+      ADMIN_PIN: "${ADMIN_PIN}"
+      SESSION_SECRET: "${SESSION_SECRET}"
     volumes:
       - jukebox_data:/app/data
 

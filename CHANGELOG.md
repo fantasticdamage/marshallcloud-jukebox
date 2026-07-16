@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+- Added PIN-protected host dashboard.
+- Added play, pause, skip, and volume controls.
+- Added guest-request lock switch.
+- Added live now-playing data for the host.
+
+# Changelog
+
 ## 0.5.0
 - Added guest display names stored in the browser.
 - Added requester labels in the live queue.

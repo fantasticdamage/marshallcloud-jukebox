@@ -12,6 +12,7 @@ const guestForm = document.getElementById("guestForm");
 const guestNameInput = document.getElementById("guestNameInput");
 
 let guestName = localStorage.getItem("jukebox_guest_name") || "";
+let requestsLocked = false;
 
 function openGuestModal() {
   guestNameInput.value = guestName;
@@ -38,7 +39,7 @@ updateGuestUi();
 if (!guestName) openGuestModal();
 const toast = document.createElement("div"); toast.className = "toast"; document.body.appendChild(toast);
 function showToast(message, type = "success") { toast.textContent = message; toast.className = `toast show ${type}`; clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.className = "toast", 3200); }
-async function queueTrack(track, button) { const original = button.textContent; button.disabled = true; button.textContent = "Adding…"; try { const response = await fetch("/api/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri: track.uri, guest_name: guestName || "Guest" }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to add track"); button.textContent = "Added"; button.classList.add("added"); showToast(`${track.name} requested by ${guestName || "Guest"}`); loadQueue(); } catch (error) { button.disabled = false; button.textContent = original; showToast(error.message, "error"); } }
+async function queueTrack(track, button) { if (requestsLocked) { showToast("The host has temporarily locked requests.", "error"); return; } const original = button.textContent; button.disabled = true; button.textContent = "Adding…"; try { const response = await fetch("/api/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri: track.uri, guest_name: guestName || "Guest" }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to add track"); button.textContent = "Added"; button.classList.add("added"); showToast(`${track.name} requested by ${guestName || "Guest"}`); loadQueue(); } catch (error) { button.disabled = false; button.textContent = original; showToast(error.message, "error"); } }
 
 let searchTimer;
 
@@ -104,6 +105,7 @@ async function loadStatus() {
       return;
     }
 
+    requestsLocked = Boolean(status.requestsLocked);
     if (status.spotifyConnected) {
       connectionBadge.textContent = status.spotifyUser?.display_name
         ? `Spotify: ${status.spotifyUser.display_name}`
@@ -111,7 +113,8 @@ async function loadStatus() {
       connectionBadge.classList.add("connected");
       loginButton.classList.add("hidden");
       searchInput.disabled = false;
-      searchMessage.textContent = "Search for a track or artist.";
+      searchMessage.textContent = requestsLocked ? "The host has temporarily locked requests." : "Search for a track or artist.";
+      searchInput.disabled = requestsLocked;
     } else {
       connectionBadge.textContent = "Spotify disconnected";
       loginButton.classList.remove("hidden");

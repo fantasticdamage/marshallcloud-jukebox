@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0d10">
   <title>MarshallCloud Jukebox</title>
-  <link rel="stylesheet" href="/styles.css?v=0.5.0">
+  <link rel="stylesheet" href="/styles.css?v=0.6.0">
 </head>
 <body>
   <div class="app-shell">
@@ -15,6 +15,7 @@
         <h1>Jukebox</h1>
       </div>
       <div class="header-actions">
+        <a class="host-link" href="/admin">Host</a>
         <button id="guestButton" class="guest-button" type="button">Requesting as Guest</button>
         <span id="connectionBadge" class="badge">Checking Spotify</span>
         <a id="spotifyLogin" class="button primary hidden" href="/auth/login">Connect Spotify</a>
@@ -78,7 +79,7 @@
 
     <footer>
       <span id="health">Checking server…</span>
-      <span>v0.5.0</span>
+      <span>v0.6.0</span>
     </footer>
   </div>
 
@@ -94,6 +95,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=0.5.0"></script>
+  <script src="/app.js?v=0.6.0"></script>
 </body>
 </html>

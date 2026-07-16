@@ -30,3 +30,5 @@ button,input{font:inherit}.app-shell{width:min(980px,100%);margin:0 auto;padding
 .modal-card{width:min(440px,100%);padding:30px;border:1px solid var(--border);border-radius:24px;background:linear-gradient(145deg,#1a2027,#101419);box-shadow:0 30px 90px rgba(0,0,0,.55)}
 .modal-card h2{margin-bottom:9px;font-size:1.8rem}.modal-copy{color:var(--muted);line-height:1.5}.modal-card form{display:grid;gap:12px;margin-top:22px}.modal-card input{width:100%;padding:15px 16px;border:1px solid var(--border);border-radius:14px;outline:none;background:#0d1116;color:var(--text)}.modal-card input:focus{border-color:rgba(30,215,96,.55);box-shadow:0 0 0 4px var(--soft)}
 @media(max-width:700px){.header-actions{gap:7px}.guest-button{max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+
+.host-link{color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:800}.host-link:hover{color:var(--text)}

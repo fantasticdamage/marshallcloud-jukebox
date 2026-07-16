@@ -1,4 +1,4 @@
-# MarshallCloud Jukebox v0.5.0
+# MarshallCloud Jukebox v0.6.0
 
 This release adds secure Spotify Authorization Code authentication and live track search.
 
@@ -68,3 +68,8 @@ This release adds:
 - Requested songs show the guest name in the live queue.
 - Duplicate tracks already present in the Sonos queue are rejected.
 - Request metadata is stored in the persistent Docker data volume.
+
+
+## Host dashboard
+
+Set `ADMIN_PIN` and a long random `SESSION_SECRET` in `.env`, then open `/admin`. The host can play, pause, skip, change volume, and lock guest requests.
