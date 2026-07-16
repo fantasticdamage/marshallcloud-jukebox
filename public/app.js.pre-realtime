@@ -229,38 +229,3 @@ async function loadQueue() {
 
 loadQueue();
 setInterval(loadQueue, 5000);
-
-
-let relaySocket;
-let relayReconnectTimer;
-
-function connectRelayWebSocket() {
-  clearTimeout(relayReconnectTimer);
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  relaySocket = new WebSocket(`${protocol}//${window.location.host}/ws`);
-
-  relaySocket.addEventListener("open", () => {
-    console.info("Relay real-time connection established");
-    document.documentElement.dataset.realtime = "connected";
-  });
-
-  relaySocket.addEventListener("message", (message) => {
-    try {
-      const data = JSON.parse(message.data);
-      if (data.event === "connected") {
-        console.info("Relay WebSocket ready", data.payload);
-      }
-    } catch (error) {
-      console.warn("Invalid Relay WebSocket message", error);
-    }
-  });
-
-  relaySocket.addEventListener("close", () => {
-    document.documentElement.dataset.realtime = "disconnected";
-    relayReconnectTimer = setTimeout(connectRelayWebSocket, 3000);
-  });
-
-  relaySocket.addEventListener("error", () => relaySocket.close());
-}
-
-connectRelayWebSocket();

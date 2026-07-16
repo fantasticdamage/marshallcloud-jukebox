@@ -2,7 +2,6 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { WebSocketServer, WebSocket } = require("ws");
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_URL = (process.env.PUBLIC_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
@@ -292,8 +291,8 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/health") {
     return sendJson(res, 200, {
       status: "ok",
-      app: "Relay",
-      version: "0.7.0",
+      app: "MarshallCloud Jukebox",
+      version: "0.6.0",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -550,22 +549,6 @@ async function handleApi(req, res, url) {
   return false;
 }
 
-
-const websocketClients = new Set();
-
-function broadcast(event, payload = {}) {
-  const message = JSON.stringify({ event, payload, sent_at: new Date().toISOString() });
-  for (const client of websocketClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
-  }
-}
-
-function websocketStatus() {
-  return { connected_clients: websocketClients.size };
-}
-
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -662,35 +645,11 @@ async function handleRequest(req, res) {
   });
 }
 
-const server = http.createServer((req, res) => {
+http.createServer((req, res) => {
   handleRequest(req, res).catch((error) => {
     console.error(error);
     sendJson(res, 500, { error: "Internal server error" });
   });
-});
-
-const websocketServer = new WebSocketServer({ server, path: "/ws" });
-
-websocketServer.on("connection", (socket) => {
-  websocketClients.add(socket);
-  socket.send(JSON.stringify({
-    event: "connected",
-    payload: websocketStatus(),
-    sent_at: new Date().toISOString()
-  }));
-
-  socket.on("close", () => websocketClients.delete(socket));
-  socket.on("error", () => websocketClients.delete(socket));
-});
-
-const heartbeat = setInterval(() => {
-  for (const socket of websocketClients) {
-    if (socket.readyState === WebSocket.OPEN) socket.ping();
-  }
-}, 30000);
-heartbeat.unref();
-
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Relay v0.7.0 listening on port ${PORT}`);
-  console.log("Relay WebSocket server listening on /ws");
+}).listen(PORT, "0.0.0.0", () => {
+  console.log(`MarshallCloud Jukebox v0.6.0 listening on port ${PORT}`);
 });

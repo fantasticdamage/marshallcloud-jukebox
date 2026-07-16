@@ -4,16 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0d10">
-  <title>Relay</title>
+  <title>MarshallCloud Jukebox</title>
   <link rel="stylesheet" href="/styles.css?v=0.6.0">
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div>
-        <p class="eyebrow">RELAY</p>
-        <h1>Relay</h1>
-        <p class="brand-tagline">Add what's next.</p>
+        <p class="eyebrow">MARSHALLCLOUD</p>
+        <h1>Jukebox</h1>
       </div>
       <div class="header-actions">
         <a class="host-link" href="/admin">Host</a>
@@ -80,7 +79,7 @@
 
     <footer>
       <span id="health">Checking server…</span>
-      <span>v0.7.0</span>
+      <span>v0.6.0</span>
     </footer>
   </div>
 
