@@ -293,7 +293,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       status: "ok",
       app: "Relay",
-      version: "0.7.1",
+      version: "0.7.0",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -487,11 +487,6 @@ async function handleApi(req, res, url) {
       });
       writeRequests(requests);
 
-      notifyQueueUpdated({
-        entity_id: HA_MEDIA_PLAYER,
-        uri: body.uri
-      });
-
       return sendJson(res, 200, {
         status: "queued",
         entity_id: HA_MEDIA_PLAYER,
@@ -565,12 +560,6 @@ function broadcast(event, payload = {}) {
       client.send(message);
     }
   }
-}
-
-function notifyQueueUpdated(payload = {}) {
-  broadcast("queue_updated", payload);
-  const delayed = setTimeout(() => broadcast("queue_updated", payload), 1200);
-  delayed.unref();
 }
 
 function websocketStatus() {
@@ -702,6 +691,6 @@ const heartbeat = setInterval(() => {
 heartbeat.unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Relay v0.7.1 listening on port ${PORT}`);
+  console.log(`Relay v0.7.0 listening on port ${PORT}`);
   console.log("Relay WebSocket server listening on /ws");
 });

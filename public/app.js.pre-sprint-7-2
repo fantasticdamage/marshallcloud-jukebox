@@ -228,7 +228,7 @@ async function loadQueue() {
 }
 
 loadQueue();
-setInterval(loadQueue, 30000);
+setInterval(loadQueue, 5000);
 
 
 let relaySocket;
@@ -249,11 +249,6 @@ function connectRelayWebSocket() {
       const data = JSON.parse(message.data);
       if (data.event === "connected") {
         console.info("Relay WebSocket ready", data.payload);
-      }
-
-      if (data.event === "queue_updated") {
-        console.info("Relay queue update received", data.payload);
-        loadQueue();
       }
     } catch (error) {
       console.warn("Invalid Relay WebSocket message", error);
