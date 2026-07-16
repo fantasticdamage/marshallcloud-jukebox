@@ -1,4 +1,6 @@
-# MarshallCloud Jukebox v0.2.0
+# MarshallCloud Jukebox v0.4.0
+
+Adds a live Home Assistant/Sonos Now Playing card with album artwork, title, artist, album, playback state, and a smoothly advancing progress bar.
 
 This release adds secure Spotify Authorization Code authentication and live track search.
 

@@ -1,3 +1,59 @@
+const albumArt = document.getElementById("albumArt");
+const trackTitle = document.getElementById("trackTitle");
+const trackArtist = document.getElementById("trackArtist");
+const trackAlbum = document.getElementById("trackAlbum");
+const progressFill = document.getElementById("progressFill");
+const elapsedTime = document.getElementById("elapsedTime");
+const durationTime = document.getElementById("durationTime");
+
+let nowPlaying = { position: 0, duration: 0, state: "unknown", receivedAt: Date.now() };
+let currentArtwork = "";
+
+function formatSeconds(value) {
+  const seconds = Math.max(0, Math.floor(Number(value) || 0));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function renderProgress() {
+  let position = nowPlaying.position;
+  if (nowPlaying.state === "playing") {
+    position += (Date.now() - nowPlaying.receivedAt) / 1000;
+  }
+  if (nowPlaying.duration > 0) position = Math.min(position, nowPlaying.duration);
+  progressFill.style.width = nowPlaying.duration > 0 ? `${(position / nowPlaying.duration) * 100}%` : "0%";
+  elapsedTime.textContent = formatSeconds(position);
+  durationTime.textContent = formatSeconds(nowPlaying.duration);
+}
+
+async function loadNowPlaying() {
+  try {
+    const response = await fetch("/api/now-playing", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to read Sonos");
+
+    nowPlaying = {
+      position: Number(data.position || 0),
+      duration: Number(data.duration || 0),
+      state: data.state || "unknown",
+      receivedAt: Date.now()
+    };
+    trackTitle.textContent = data.title || "Nothing playing";
+    trackArtist.textContent = data.artist || (data.state === "idle" ? "Sonos is idle" : "");
+    trackAlbum.textContent = data.album || "";
+
+    if (data.artwork && data.artwork !== currentArtwork) {
+      currentArtwork = data.artwork;
+      albumArt.innerHTML = `<img src="${data.artwork}" alt="Album artwork">`;
+    } else if (!data.artwork) {
+      currentArtwork = "";
+      albumArt.textContent = "♫";
+    }
+    renderProgress();
+  } catch (error) {
+    trackArtist.textContent = error.message;
+  }
+}
+
 const searchInput = document.getElementById("search");
 const searchMessage = document.getElementById("searchMessage");
 const results = document.getElementById("results");
@@ -131,3 +187,6 @@ if (params.has("spotify") || params.has("spotify_error")) {
 
 checkHealth();
 loadStatus();
+loadNowPlaying();
+setInterval(loadNowPlaying, 5000);
+setInterval(renderProgress, 1000);
