@@ -293,7 +293,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       status: "ok",
       app: "Relay",
-      version: "0.7.5",
+      version: "0.7.4",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -324,10 +324,6 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/search") {
     const query = (url.searchParams.get("q") || "").trim();
     const mode = url.searchParams.get("mode") === "album" ? "album" : "track";
-    const requestedOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
-    const offset = Number.isFinite(requestedOffset)
-      ? Math.max(0, Math.min(requestedOffset, 1000))
-      : 0;
 
     if (query.length < 2) {
       return sendJson(res, 400, { error: "Enter at least two characters." });
@@ -336,18 +332,18 @@ async function handleApi(req, res, url) {
     try {
       const spotifyQuery = mode === "album" ? `album:${query}` : query;
 
-      async function searchPage(limit, pageOffset) {
+      async function searchPage(limit, offset) {
         return spotifyApi(`/search?${new URLSearchParams({
           q: spotifyQuery,
           type: "track",
           limit: String(limit),
-          offset: String(pageOffset)
+          offset: String(offset)
         })}`);
       }
 
       const [firstPage, secondPage] = await Promise.all([
-        searchPage(10, offset),
-        searchPage(5, offset + 10)
+        searchPage(10, 0),
+        searchPage(5, 10)
       ]);
 
       const combined = [
@@ -375,17 +371,7 @@ async function handleApi(req, res, url) {
           external_url: track.external_urls?.spotify || ""
         }));
 
-      const total = Number(firstPage.tracks?.total || 0);
-      const nextOffset = offset + 15;
-
-      return sendJson(res, 200, {
-        tracks,
-        mode,
-        offset,
-        next_offset: nextOffset,
-        has_more: nextOffset < total && tracks.length > 0,
-        total
-      });
+      return sendJson(res, 200, { tracks, mode });
     } catch (error) {
       return sendJson(res, error.statusCode || 500, { error: error.message });
     }
@@ -833,7 +819,7 @@ const heartbeat = setInterval(() => {
 heartbeat.unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Relay v0.7.5 listening on port ${PORT}`);
+  console.log(`Relay v0.7.4 listening on port ${PORT}`);
   console.log("Relay WebSocket server listening on /ws");
   setTimeout(() => syncRealtimeSnapshots(), 750).unref();
   const realtimeSyncTimer = setInterval(syncRealtimeSnapshots, 2000);
