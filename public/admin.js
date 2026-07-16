@@ -1,1 +1,258 @@
-const loginPanel=document.getElementById("loginPanel"),controls=document.getElementById("controls"),loginForm=document.getElementById("loginForm"),pin=document.getElementById("pin"),loginMessage=document.getElementById("loginMessage"),adminMessage=document.getElementById("adminMessage"),volume=document.getElementById("volume"),volumeLabel=document.getElementById("volumeLabel"),lockButton=document.getElementById("lockButton"),lockCopy=document.getElementById("lockCopy");let locked=false,volumeTimer;function message(text,error=false){adminMessage.textContent=text;adminMessage.className=`helper ${error?"error":""}`;}function setAuthenticated(ok){loginPanel.classList.toggle("hidden",ok);controls.classList.toggle("hidden",!ok);}function updateLock(value){locked=Boolean(value);lockButton.textContent=locked?"Open requests":"Lock requests";lockButton.className=`button ${locked?"primary":"danger"}`;lockCopy.textContent=locked?"Requests are currently locked.":"Requests are open.";}async function status(){const r=await fetch("/api/admin/status",{cache:"no-store"}),d=await r.json();setAuthenticated(d.authenticated);updateLock(d.requestsLocked);if(d.authenticated)refresh();}loginForm.addEventListener("submit",async e=>{e.preventDefault();const r=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:pin.value})}),d=await r.json();if(!r.ok){loginMessage.textContent=d.error||"Login failed";loginMessage.className="helper error";return}setAuthenticated(true);refresh();});async function control(action,extra={}){const r=await fetch("/api/admin/control",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...extra})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Control failed");return d;}document.querySelectorAll("[data-action]").forEach(b=>b.addEventListener("click",async()=>{try{await control(b.dataset.action);message("Command sent.");setTimeout(refresh,500)}catch(e){message(e.message,true)}}));volume.addEventListener("input",()=>{volumeLabel.textContent=`${volume.value}%`;clearTimeout(volumeTimer);volumeTimer=setTimeout(async()=>{try{await control("volume",{volume:Number(volume.value)/100});message("Volume updated.")}catch(e){message(e.message,true)}},250)});lockButton.addEventListener("click",async()=>{try{const d=await control("lock",{locked:!locked});updateLock(d.requestsLocked);message(d.requestsLocked?"Guest requests locked.":"Guest requests opened.")}catch(e){message(e.message,true)}});async function refresh(){try{const r=await fetch("/api/now-playing",{cache:"no-store"}),d=await r.json();if(!r.ok)throw new Error(d.error||"Unable to load player");document.getElementById("adminTitle").textContent=d.title;document.getElementById("adminArtist").textContent=[d.artist,d.album].filter(Boolean).join(" · ");const art=document.getElementById("adminArt");if(d.artwork){art.src=d.artwork;art.style.display="block"}else art.style.display="none";volume.value=Math.round((d.volume||0)*100);volumeLabel.textContent=`${volume.value}%`;}catch(e){message(e.message,true)}}status();setInterval(()=>{if(!controls.classList.contains("hidden"))refresh()},5000);
+const loginPanel = document.getElementById("loginPanel");
+const controls = document.getElementById("controls");
+const loginForm = document.getElementById("loginForm");
+const pin = document.getElementById("pin");
+const loginMessage = document.getElementById("loginMessage");
+const adminMessage = document.getElementById("adminMessage");
+const volume = document.getElementById("volume");
+const volumeLabel = document.getElementById("volumeLabel");
+const lockButton = document.getElementById("lockButton");
+const lockCopy = document.getElementById("lockCopy");
+const adminQueue = document.getElementById("adminQueue");
+const adminQueueCount = document.getElementById("adminQueueCount");
+
+let locked = false;
+let volumeTimer;
+let relaySocket;
+let relayReconnectTimer;
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[character]);
+}
+
+function message(text, error = false) {
+  adminMessage.textContent = text;
+  adminMessage.className = `helper ${error ? "error" : ""}`;
+}
+
+function setAuthenticated(ok) {
+  loginPanel.classList.toggle("hidden", ok);
+  controls.classList.toggle("hidden", !ok);
+}
+
+function updateLock(value) {
+  locked = Boolean(value);
+  lockButton.textContent = locked ? "Open requests" : "Lock requests";
+  lockButton.className = `button ${locked ? "primary" : "danger"}`;
+  lockCopy.textContent = locked
+    ? "Requests are currently locked."
+    : "Requests are open.";
+}
+
+function renderNowPlaying(data) {
+  document.getElementById("adminTitle").textContent = data.title || "Nothing playing";
+  document.getElementById("adminArtist").textContent = [data.artist, data.album]
+    .filter(Boolean)
+    .join(" · ");
+
+  const art = document.getElementById("adminArt");
+  if (data.artwork) {
+    art.src = data.artwork;
+    art.style.display = "block";
+  } else {
+    art.style.display = "none";
+  }
+
+  volume.value = Math.round((Number(data.volume) || 0) * 100);
+  volumeLabel.textContent = `${volume.value}%`;
+}
+
+function renderAdminQueue(items) {
+  adminQueueCount.textContent = `${items.length} ${items.length === 1 ? "song" : "songs"}`;
+
+  if (!items.length) {
+    adminQueue.innerHTML = '<p class="muted admin-queue-empty">The upcoming queue is empty.</p>';
+    return;
+  }
+
+  adminQueue.innerHTML = items.map((item) => `
+    <article class="admin-queue-item">
+      ${item.image
+        ? `<img class="admin-queue-art" src="${escapeHtml(item.image)}" alt="">`
+        : '<div class="admin-queue-art admin-queue-art-placeholder">♫</div>'}
+      <div class="admin-queue-copy">
+        <strong>${escapeHtml(item.title || "Unknown title")}</strong>
+        <span>${escapeHtml(item.artist || "Unknown artist")}</span>
+        ${item.requested_by ? `<small>Requested by ${escapeHtml(item.requested_by)}</small>` : ""}
+      </div>
+      <button
+        class="button danger admin-remove-button"
+        type="button"
+        data-queue-position="${Number(item.queue_position)}"
+        data-spotify-id="${escapeHtml(item.spotify_id || "")}" 
+        data-track-title="${escapeHtml(item.title || "this song")}">
+        Remove
+      </button>
+    </article>
+  `).join("");
+}
+
+async function loadQueue() {
+  const response = await fetch("/api/queue", { cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Unable to load queue");
+  renderAdminQueue(data.items || []);
+}
+
+async function removeQueueItem(button) {
+  const queuePosition = Number(button.dataset.queuePosition);
+  const trackTitle = button.dataset.trackTitle || "this song";
+  if (!window.confirm(`Remove ${trackTitle} from the queue?`)) return;
+
+  button.disabled = true;
+  button.textContent = "Removing…";
+
+  try {
+    const response = await fetch("/api/admin/queue/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        queue_position: queuePosition,
+        spotify_id: button.dataset.spotifyId || ""
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to remove song");
+    message(`${trackTitle} removed from the queue.`);
+    setTimeout(loadQueue, 350);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Remove";
+    message(error.message, true);
+  }
+}
+
+adminQueue.addEventListener("click", (event) => {
+  const button = event.target.closest(".admin-remove-button");
+  if (button) removeQueueItem(button);
+});
+
+async function status() {
+  const response = await fetch("/api/admin/status", { cache: "no-store" });
+  const data = await response.json();
+  setAuthenticated(data.authenticated);
+  updateLock(data.requestsLocked);
+  if (data.authenticated) refresh();
+}
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const response = await fetch("/api/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: pin.value })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    loginMessage.textContent = data.error || "Login failed";
+    loginMessage.className = "helper error";
+    return;
+  }
+  setAuthenticated(true);
+  refresh();
+});
+
+async function control(action, extra = {}) {
+  const response = await fetch("/api/admin/control", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ...extra })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Control failed");
+  return data;
+}
+
+document.querySelectorAll("[data-action]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    try {
+      await control(button.dataset.action);
+      message("Command sent.");
+      setTimeout(refresh, 500);
+    } catch (error) {
+      message(error.message, true);
+    }
+  });
+});
+
+volume.addEventListener("input", () => {
+  volumeLabel.textContent = `${volume.value}%`;
+  clearTimeout(volumeTimer);
+  volumeTimer = setTimeout(async () => {
+    try {
+      await control("volume", { volume: Number(volume.value) / 100 });
+      message("Volume updated.");
+    } catch (error) {
+      message(error.message, true);
+    }
+  }, 250);
+});
+
+lockButton.addEventListener("click", async () => {
+  try {
+    const data = await control("lock", { locked: !locked });
+    updateLock(data.requestsLocked);
+    message(data.requestsLocked ? "Guest requests locked." : "Guest requests opened.");
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+
+async function refresh() {
+  try {
+    const [playerResponse, queueResponse] = await Promise.all([
+      fetch("/api/now-playing", { cache: "no-store" }),
+      fetch("/api/queue", { cache: "no-store" })
+    ]);
+    const player = await playerResponse.json();
+    const queue = await queueResponse.json();
+    if (!playerResponse.ok) throw new Error(player.error || "Unable to load player");
+    if (!queueResponse.ok) throw new Error(queue.error || "Unable to load queue");
+    renderNowPlaying(player);
+    renderAdminQueue(queue.items || []);
+  } catch (error) {
+    message(error.message, true);
+  }
+}
+
+function connectAdminWebSocket() {
+  clearTimeout(relayReconnectTimer);
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  relaySocket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+  relaySocket.addEventListener("message", (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.event === "queue_updated") {
+        if (Array.isArray(data.payload?.items)) {
+          renderAdminQueue(data.payload.items);
+        } else {
+          loadQueue().catch((error) => message(error.message, true));
+        }
+      }
+      if (data.event === "now_playing_updated" && data.payload) {
+        renderNowPlaying(data.payload);
+      }
+    } catch (error) {
+      console.warn("Relay admin WebSocket message failed:", error);
+    }
+  });
+
+  relaySocket.addEventListener("close", () => {
+    relayReconnectTimer = setTimeout(connectAdminWebSocket, 2500);
+  });
+
+  relaySocket.addEventListener("error", () => relaySocket.close());
+}
+
+status();
+connectAdminWebSocket();
+setInterval(() => {
+  if (!controls.classList.contains("hidden")) refresh();
+}, 120000);

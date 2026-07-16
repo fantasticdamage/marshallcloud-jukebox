@@ -1,7 +1,5 @@
 const searchInput = document.getElementById("search");
 const searchMessage = document.getElementById("searchMessage");
-const searchModeTracks = document.getElementById("searchModeTracks");
-const searchModeAlbums = document.getElementById("searchModeAlbums");
 const results = document.getElementById("results");
 const loginButton = document.getElementById("spotifyLogin");
 const connectionBadge = document.getElementById("connectionBadge");
@@ -44,7 +42,6 @@ function showToast(message, type = "success") { toast.textContent = message; toa
 async function queueTrack(track, button) { if (requestsLocked) { showToast("The host has temporarily locked requests.", "error"); return; } const original = button.textContent; button.disabled = true; button.textContent = "Adding…"; try { const response = await fetch("/api/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri: track.uri, guest_name: guestName || "Guest" }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to add track"); button.textContent = "Added"; button.classList.add("added"); showToast(`${track.name} requested by ${guestName || "Guest"}`); loadQueue(); } catch (error) { button.disabled = false; button.textContent = original; showToast(error.message, "error"); } }
 
 let searchTimer;
-let searchMode = "track";
 
 function formatDuration(ms) {
   const total = Math.floor(ms / 1000);
@@ -72,7 +69,7 @@ function renderTracks(tracks) {
   }
 
   searchMessage.className = "helper";
-  searchMessage.textContent = `${tracks.length} ${searchMode === "album" ? "album-track" : "track"} results`;
+  searchMessage.textContent = `${tracks.length} results`;
 
   for (const track of tracks) {
     const item = document.createElement("article");
@@ -140,27 +137,6 @@ async function checkHealth() {
   }
 }
 
-function setSearchMode(mode) {
-  searchMode = mode === "album" ? "album" : "track";
-  searchModeTracks.classList.toggle("active", searchMode === "track");
-  searchModeAlbums.classList.toggle("active", searchMode === "album");
-  searchInput.placeholder = searchMode === "album"
-    ? "Search by album title"
-    : "Search for a song or artist";
-
-  const query = searchInput.value.trim();
-  if (query.length >= 2) {
-    searchInput.dispatchEvent(new Event("input"));
-  } else {
-    searchMessage.textContent = searchMode === "album"
-      ? "Enter an album title."
-      : "Search for a track or artist.";
-  }
-}
-
-searchModeTracks.addEventListener("click", () => setSearchMode("track"));
-searchModeAlbums.addEventListener("click", () => setSearchMode("album"));
-
 searchInput.addEventListener("input", () => {
   clearTimeout(searchTimer);
   const query = searchInput.value.trim();
@@ -177,7 +153,7 @@ searchInput.addEventListener("input", () => {
 
   searchTimer = setTimeout(async () => {
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${encodeURIComponent(searchMode)}`, { cache: "no-store" });
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Search failed");
       renderTracks(data.tracks || []);

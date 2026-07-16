@@ -293,7 +293,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       status: "ok",
       app: "Relay",
-      version: "0.7.4",
+      version: "0.7.3",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -323,55 +323,31 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/search") {
     const query = (url.searchParams.get("q") || "").trim();
-    const mode = url.searchParams.get("mode") === "album" ? "album" : "track";
-
     if (query.length < 2) {
       return sendJson(res, 400, { error: "Enter at least two characters." });
     }
 
     try {
-      const spotifyQuery = mode === "album" ? `album:${query}` : query;
+      const params = new URLSearchParams({
+        q: query,
+        type: "track",
+        limit: "10"
+      });
+      const data = await spotifyApi(`/search?${params}`);
 
-      async function searchPage(limit, offset) {
-        return spotifyApi(`/search?${new URLSearchParams({
-          q: spotifyQuery,
-          type: "track",
-          limit: String(limit),
-          offset: String(offset)
-        })}`);
-      }
+      const tracks = (data.tracks?.items || []).map((track) => ({
+        id: track.id,
+        uri: track.uri,
+        name: track.name,
+        artists: track.artists.map((artist) => artist.name).join(", "),
+        album: track.album.name,
+        image: track.album.images?.[1]?.url || track.album.images?.[0]?.url || "",
+        duration_ms: track.duration_ms,
+        explicit: track.explicit,
+        external_url: track.external_urls?.spotify || ""
+      }));
 
-      const [firstPage, secondPage] = await Promise.all([
-        searchPage(10, 0),
-        searchPage(5, 10)
-      ]);
-
-      const combined = [
-        ...(firstPage.tracks?.items || []),
-        ...(secondPage.tracks?.items || [])
-      ];
-
-      const seen = new Set();
-      const tracks = combined
-        .filter((track) => {
-          if (!track?.id || seen.has(track.id)) return false;
-          seen.add(track.id);
-          return true;
-        })
-        .slice(0, 15)
-        .map((track) => ({
-          id: track.id,
-          uri: track.uri,
-          name: track.name,
-          artists: track.artists.map((artist) => artist.name).join(", "),
-          album: track.album.name,
-          image: track.album.images?.[1]?.url || track.album.images?.[0]?.url || "",
-          duration_ms: track.duration_ms,
-          explicit: track.explicit,
-          external_url: track.external_urls?.spotify || ""
-        }));
-
-      return sendJson(res, 200, { tracks, mode });
+      return sendJson(res, 200, { tracks });
     } catch (error) {
       return sendJson(res, error.statusCode || 500, { error: error.message });
     }
@@ -819,7 +795,7 @@ const heartbeat = setInterval(() => {
 heartbeat.unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Relay v0.7.4 listening on port ${PORT}`);
+  console.log(`Relay v0.7.3 listening on port ${PORT}`);
   console.log("Relay WebSocket server listening on /ws");
   setTimeout(() => syncRealtimeSnapshots(), 750).unref();
   const realtimeSyncTimer = setInterval(syncRealtimeSnapshots, 2000);
