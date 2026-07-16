@@ -148,7 +148,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       status: "ok",
       app: "MarshallCloud Jukebox",
-      version: "0.4.0",
+      version: "0.4.1",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -208,33 +208,36 @@ async function handleApi(req, res, url) {
   }
 
 
-  if (url.pathname === "/api/now-playing" && req.method === "GET") {
+  if (url.pathname === "/api/queue" && req.method === "GET") {
     try {
-      const entity = await homeAssistantRequest(`/api/states/${encodeURIComponent(HA_MEDIA_PLAYER)}`);
-      const attributes = entity.attributes || {};
-      let position = Number(attributes.media_position || 0);
-      const duration = Number(attributes.media_duration || 0);
-
-      if (entity.state === "playing" && attributes.media_position_updated_at) {
-        const updatedAt = Date.parse(attributes.media_position_updated_at);
-        if (Number.isFinite(updatedAt)) {
-          position += Math.max(0, (Date.now() - updatedAt) / 1000);
+      const response = await homeAssistantRequest(
+        "/api/services/sonos/get_queue?return_response",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            entity_id: HA_MEDIA_PLAYER
+          })
         }
-      }
+      );
 
-      if (duration > 0) position = Math.min(position, duration);
+      const rawItems =
+        response?.service_response?.[HA_MEDIA_PLAYER] ||
+        response?.[HA_MEDIA_PLAYER] ||
+        [];
 
-      return sendJson(res, 200, {
-        state: entity.state || "unknown",
-        title: attributes.media_title || "Nothing playing",
-        artist: attributes.media_artist || "",
-        album: attributes.media_album_name || attributes.media_album || "",
-        duration,
-        position,
-        volume: Number(attributes.volume_level || 0),
-        artwork: attributes.entity_picture ? `/api/artwork?key=${encodeURIComponent(attributes.media_content_id || attributes.media_title || Date.now())}` : ""
-      });
+      const items = Array.isArray(rawItems)
+        ? rawItems.map((item, index) => ({
+            position: index + 1,
+            title: item.media_title || "Unknown title",
+            artist: item.media_artist || "",
+            album: item.media_album_name || "",
+            content_id: item.media_content_id || ""
+          }))
+        : [];
+
+      return sendJson(res, 200, { items });
     } catch (error) {
+      console.error("Queue read failed:", error.message);
       return sendJson(res, error.statusCode || 500, { error: error.message });
     }
   }
@@ -313,30 +316,6 @@ async function handleRequest(req, res) {
     }
   }
 
-
-  if (url.pathname === "/api/artwork") {
-    try {
-      const entity = await homeAssistantRequest(`/api/states/${encodeURIComponent(HA_MEDIA_PLAYER)}`);
-      const picture = entity.attributes?.entity_picture;
-      if (!picture) return sendJson(res, 404, { error: "Artwork unavailable" });
-
-      const artworkUrl = picture.startsWith("http") ? picture : `${HA_URL}${picture}`;
-      const response = await fetch(artworkUrl, {
-        headers: picture.startsWith("http") ? {} : { Authorization: `Bearer ${HA_TOKEN}` }
-      });
-      if (!response.ok) return sendJson(res, response.status, { error: "Artwork unavailable" });
-
-      const body = Buffer.from(await response.arrayBuffer());
-      res.writeHead(200, {
-        "Content-Type": response.headers.get("content-type") || "image/jpeg",
-        "Cache-Control": "private, max-age=60"
-      });
-      return res.end(body);
-    } catch (error) {
-      return sendJson(res, error.statusCode || 500, { error: error.message });
-    }
-  }
-
   if (url.pathname.startsWith("/api/")) {
     const handled = await handleApi(req, res, url);
     if (handled !== false) return;
@@ -377,5 +356,5 @@ http.createServer((req, res) => {
     sendJson(res, 500, { error: "Internal server error" });
   });
 }).listen(PORT, "0.0.0.0", () => {
-  console.log(`MarshallCloud Jukebox v0.4.0 listening on port ${PORT}`);
+  console.log(`MarshallCloud Jukebox v0.4.1 listening on port ${PORT}`);
 });
