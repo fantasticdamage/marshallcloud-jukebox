@@ -1,4 +1,4 @@
-:root{color-scheme:dark;--bg:#090b0e;--surface:#11151a;--border:#252c35;--text:#f7f8fa;--muted:#949ca8;--accent:#1ed760;--soft:rgba(30,215,96,.14);--danger:#ff6b6b;--shadow:0 24px 70px rgba(0,0,0,.34)}
+:root{color-scheme:dark;--bg:#080b12;--surface:#111725;--border:#2a354b;--text:#f7f9fc;--muted:#9aa7ba;--accent:#56a8ff;--soft:rgba(86,168,255,.15);--danger:#ff6b6b;--shadow:0 24px 70px rgba(0,0,0,.34)}
 *{box-sizing:border-box}
 body{margin:0;min-width:320px;min-height:100vh;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at top right,rgba(30,215,96,.1),transparent 28rem),linear-gradient(180deg,#0c0f13 0%,var(--bg) 45%);color:var(--text)}
 button,input{font:inherit}.app-shell{width:min(980px,100%);margin:0 auto;padding:28px 18px 36px}.topbar,.queue-heading,.search-heading,footer{display:flex;align-items:center;justify-content:space-between;gap:20px}.topbar{margin-bottom:32px}.header-actions{display:flex;align-items:center;gap:10px}.eyebrow{margin:0 0 4px;color:var(--accent);font-size:.72rem;font-weight:800;letter-spacing:.19em}h1,h2,h3,p{margin-top:0}h1{margin-bottom:0;font-size:clamp(2rem,8vw,3.4rem);line-height:.95}h2{margin-bottom:0;font-size:1.55rem}.badge{border:1px solid var(--border);border-radius:999px;padding:9px 13px;color:var(--muted);font-size:.78rem}.badge.connected{color:var(--accent);border-color:rgba(30,215,96,.35);background:var(--soft)}.button{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:10px 16px;text-decoration:none;font-weight:800}.button.primary{background:var(--accent);color:#061008}.hidden{display:none!important}.card{border:1px solid var(--border);border-radius:24px;background:linear-gradient(145deg,rgba(25,30,37,.96),rgba(15,19,24,.98));box-shadow:var(--shadow)}.now-playing{padding:clamp(20px,4vw,34px)}.section-heading{display:flex;align-items:center;gap:10px;margin-bottom:24px;color:var(--muted);font-size:.82rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.status-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 7px var(--soft)}.track-layout{display:grid;grid-template-columns:minmax(150px,240px) 1fr;align-items:center;gap:clamp(22px,5vw,48px)}.album-art{aspect-ratio:1;display:grid;place-items:center;border-radius:20px;background:#20262e;color:var(--accent);font-size:5rem;box-shadow:0 18px 30px rgba(0,0,0,.35)}.track-title{margin-bottom:8px;font-size:clamp(1.65rem,5vw,3rem);font-weight:850;letter-spacing:-.04em}.track-artist{margin-bottom:30px;color:var(--muted)}.progress{height:7px;border-radius:99px;overflow:hidden;background:#2a3038}.progress-fill{width:0;height:100%;background:var(--accent)}.time-row{display:flex;justify-content:space-between;margin-top:9px;color:var(--muted);font-size:.75rem}.search-panel,.queue-section{margin-top:34px}.search-heading{margin-bottom:14px}.search-box{display:flex;align-items:center;gap:11px;padding:0 17px;border:1px solid var(--border);border-radius:17px;background:var(--surface)}.search-box:focus-within{border-color:rgba(30,215,96,.55);box-shadow:0 0 0 4px var(--soft)}.search-box span{color:var(--muted);font-size:1.6rem}.search-box input{width:100%;padding:17px 0;border:0;outline:none;background:transparent;color:var(--text)}.search-box input:disabled{cursor:not-allowed}.search-box input::placeholder{color:#747d89}.helper{margin:10px 2px 0;color:var(--muted);font-size:.82rem}.helper.error{color:var(--danger)}.results{display:grid;gap:10px;margin-top:18px}.result{display:grid;grid-template-columns:64px 1fr auto;align-items:center;gap:14px;padding:12px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}.result img{width:64px;height:64px;object-fit:cover;border-radius:12px}.result-title{margin:0 0 4px;font-weight:800}.result-meta{margin:0;color:var(--muted);font-size:.82rem}.explicit{display:inline-block;margin-left:7px;padding:1px 5px;border-radius:4px;background:#3a4048;color:#ddd;font-size:.65rem}.add-button{border:1px solid rgba(30,215,96,.35);border-radius:999px;padding:9px 14px;background:var(--soft);color:var(--accent);cursor:pointer;font-weight:800}.add-button:hover{background:rgba(30,215,96,.22)}.add-button:disabled{cursor:wait;opacity:.7}.add-button.added{background:var(--accent);color:#061008;cursor:default}.queue-heading{margin-bottom:17px}.queue-count{color:var(--muted);font-size:.86rem}.empty-state{padding:42px 24px;text-align:center}.empty-icon{width:58px;height:58px;display:grid;place-items:center;margin:0 auto 16px;border-radius:18px;background:var(--soft);color:var(--accent);font-size:1.8rem}.empty-state h3{margin-bottom:8px;font-size:1.25rem}.empty-state p{max-width:490px;margin:0 auto;color:var(--muted);line-height:1.55}footer{margin-top:30px;padding:0 3px;color:var(--muted);font-size:.76rem}.health-ok{color:var(--accent)}.health-error{color:var(--danger)}
@@ -84,4 +84,179 @@ button,input{font:inherit}.app-shell{width:min(980px,100%);margin:0 auto;padding
 .search-range {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+
+/* Relay Sprint 8.1: visual foundation */
+.relay-app {
+  background:
+    radial-gradient(circle at 82% -10%, rgba(86, 168, 255, 0.18), transparent 32rem),
+    radial-gradient(circle at -10% 28%, rgba(119, 89, 255, 0.12), transparent 30rem),
+    linear-gradient(180deg, #0b0f18 0%, var(--bg) 48%, #06080d 100%);
+  background-attachment: fixed;
+}
+
+.relay-app .app-shell {
+  width: min(1080px, 100%);
+  padding: 34px 22px 42px;
+}
+
+.relay-app .topbar {
+  align-items: flex-end;
+  padding-bottom: 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.relay-app .topbar .eyebrow {
+  display: none;
+}
+
+.relay-app h1 {
+  font-size: clamp(2.7rem, 8vw, 4.6rem);
+  letter-spacing: -0.065em;
+  line-height: 0.9;
+}
+
+.brand-tagline {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: clamp(0.95rem, 2.2vw, 1.08rem);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.relay-app .card,
+.relay-app .result,
+.relay-app .queue-item,
+.relay-app .search-box {
+  border-color: rgba(143, 167, 203, 0.2);
+  background: linear-gradient(145deg, rgba(22, 29, 43, 0.95), rgba(12, 17, 27, 0.97));
+  box-shadow: 0 22px 65px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.relay-app .now-playing {
+  position: relative;
+  overflow: hidden;
+  border-radius: 30px;
+}
+
+.relay-app .now-playing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(125deg, rgba(86, 168, 255, 0.10), transparent 44%);
+}
+
+.relay-app .section-heading,
+.relay-app .eyebrow {
+  color: var(--accent);
+}
+
+.relay-app .status-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 7px var(--soft);
+}
+
+.relay-app .album-art {
+  background: linear-gradient(145deg, #222c40, #151b29);
+  color: var(--accent);
+  border: 1px solid rgba(143, 167, 203, 0.18);
+}
+
+.relay-app .track-title {
+  letter-spacing: -0.05em;
+}
+
+.relay-app .progress-fill {
+  background: linear-gradient(90deg, #56a8ff, #8a72ff);
+}
+
+.relay-app .search-panel,
+.relay-app .queue-section {
+  margin-top: 42px;
+}
+
+.relay-app .search-box {
+  border-radius: 20px;
+  min-height: 60px;
+}
+
+.relay-app .search-box:focus-within {
+  border-color: rgba(86, 168, 255, 0.65);
+  box-shadow: 0 0 0 4px rgba(86, 168, 255, 0.13);
+}
+
+.relay-app .search-mode,
+.relay-app .search-modes {
+  border-color: rgba(143, 167, 203, 0.2);
+}
+
+.relay-app .search-mode.active,
+.relay-app .search-modes .active,
+.relay-app .pagination-button,
+.relay-app .button.primary {
+  background: linear-gradient(135deg, #56a8ff, #7d70ff);
+  color: #07101c;
+  border-color: transparent;
+}
+
+.relay-app .add-button {
+  border-color: rgba(86, 168, 255, 0.38);
+  background: rgba(86, 168, 255, 0.13);
+  color: #88c4ff;
+}
+
+.relay-app .add-button:hover {
+  background: rgba(86, 168, 255, 0.23);
+}
+
+.relay-app .next-track {
+  border-color: rgba(86, 168, 255, 0.38);
+  background: linear-gradient(90deg, rgba(86, 168, 255, 0.11), rgba(17, 23, 37, 0.96));
+}
+
+.relay-app .next-badge,
+.relay-app .badge.connected,
+.relay-app .health-ok {
+  color: #7bbcff;
+}
+
+.relay-app .empty-icon {
+  color: #7bbcff;
+  background: rgba(86, 168, 255, 0.13);
+}
+
+.relay-app footer {
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 640px) {
+  .relay-app .app-shell {
+    padding: 22px 14px 34px;
+  }
+
+  .relay-app .topbar {
+    gap: 14px;
+  }
+
+  .relay-app h1 {
+    font-size: clamp(2.5rem, 14vw, 3.8rem);
+  }
+
+  .relay-app .now-playing {
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .relay-app .album-art {
+    max-width: 220px;
+  }
+
+  .relay-app .result,
+  .relay-app .queue-item {
+    border-radius: 16px;
+  }
 }
