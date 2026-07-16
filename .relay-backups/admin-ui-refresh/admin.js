@@ -10,13 +10,8 @@ const lockButton = document.getElementById("lockButton");
 const lockCopy = document.getElementById("lockCopy");
 const adminQueue = document.getElementById("adminQueue");
 const adminQueueCount = document.getElementById("adminQueueCount");
-const adminPlaybackState = document.getElementById("adminPlaybackState");
-const requestStatusPill = document.getElementById("requestStatusPill");
-const playButton = document.querySelector('[data-action="play"]');
-const pauseButton = document.querySelector('[data-action="pause"]');
-const adminArt = document.getElementById("adminArt");
 
-const playbackState = document.getElementById("adminPlaybackState");
+let locked = false;
 let volumeTimer;
 let relaySocket;
 let relayReconnectTimer;
@@ -48,51 +43,6 @@ function updateLock(value) {
   lockCopy.textContent = locked
     ? "Requests are currently locked."
     : "Requests are open.";
-
-  if (requestStatusPill) {
-    requestStatusPill.textContent = locked ? "Locked" : "Open";
-    requestStatusPill.className =
-      `status-pill ${locked ? "status-pill-locked" : "status-pill-open"}`;
-  }
-}
-
-
-function setArtwork(url, title = "") {
-  if (!adminArt) return;
-
-  if (url) {
-    adminArt.classList.remove("admin-art-fallback-active");
-    adminArt.alt = title ? `${title} artwork` : "Album artwork";
-    adminArt.src = url;
-  } else {
-    adminArt.removeAttribute("src");
-    adminArt.alt = "";
-    adminArt.classList.add("admin-art-fallback-active");
-  }
-}
-
-if (adminArt) {
-  adminArt.addEventListener("error", () => {
-    adminArt.removeAttribute("src");
-    adminArt.alt = "";
-    adminArt.classList.add("admin-art-fallback-active");
-  });
-}
-
-function updatePlaybackControls(state) {
-  const normalized = String(state || "").toLowerCase();
-  const isPlaying = normalized === "playing";
-  const isPaused = normalized === "paused";
-
-  if (adminPlaybackState) {
-    adminPlaybackState.textContent = isPlaying ? "Playing" : isPaused ? "Paused" : "Idle";
-    adminPlaybackState.className =
-      `status-pill ${isPlaying ? "status-pill-playing" : isPaused ? "status-pill-paused" : "status-pill-muted"}`;
-  }
-
-  if (playButton) playButton.classList.toggle("hidden", isPlaying);
-  if (pauseButton) pauseButton.classList.toggle("hidden", !isPlaying);
-  if (playButton) playButton.textContent = isPaused ? "▶ Resume" : "▶ Play";
 }
 
 function renderNowPlaying(data) {
@@ -104,29 +54,13 @@ function renderNowPlaying(data) {
   const art = document.getElementById("adminArt");
   if (data.artwork) {
     art.src = data.artwork;
-    art.alt = data.title ? `${data.title} artwork` : "Now playing artwork";
     art.style.display = "block";
-    art.parentElement?.classList.add("has-artwork");
   } else {
-    art.removeAttribute("src");
     art.style.display = "none";
-    art.parentElement?.classList.remove("has-artwork");
   }
 
   volume.value = Math.round((Number(data.volume) || 0) * 100);
   volumeLabel.textContent = `${volume.value}%`;
-
-  const state = String(data.state || "idle").toLowerCase();
-  const isPlaying = state === "playing";
-  const isPaused = state === "paused";
-  if (playbackState) {
-    playbackState.textContent = isPlaying ? "Playing" : isPaused ? "Paused" : "Idle";
-    playbackState.dataset.state = state;
-  }
-  if (playButton && pauseButton) {
-    playButton.classList.toggle("is-current", !isPlaying);
-    pauseButton.classList.toggle("is-current", isPlaying);
-  }
 }
 
 function renderAdminQueue(items) {
@@ -137,9 +71,8 @@ function renderAdminQueue(items) {
     return;
   }
 
-  adminQueue.innerHTML = items.map((item, index) => `
+  adminQueue.innerHTML = items.map((item) => `
     <article class="admin-queue-item">
-      <div class="admin-queue-position">${Number(item.queue_position) || index + 1}</div>
       ${item.image
         ? `<img class="admin-queue-art" src="${escapeHtml(item.image)}" alt="">`
         : '<div class="admin-queue-art admin-queue-art-placeholder">♫</div>'}
@@ -153,9 +86,7 @@ function renderAdminQueue(items) {
         type="button"
         data-queue-position="${Number(item.queue_position)}"
         data-spotify-id="${escapeHtml(item.spotify_id || "")}" 
-        data-track-title="${escapeHtml(item.title || "this song")}"
-        aria-label="Remove ${escapeHtml(item.title || "this song")} from queue"
-        title="Remove from queue">
+        data-track-title="${escapeHtml(item.title || "this song")}">
         Remove
       </button>
     </article>
