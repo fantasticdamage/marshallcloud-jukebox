@@ -288,6 +288,30 @@ async function enrichQueueItems(items) {
   });
 }
 
+
+function relayArtworkUrl(value) {
+  if (!value || typeof value !== "string") return "";
+
+  if (value.startsWith("/api/artwork?path=")) return value;
+
+  if (value.startsWith("/")) {
+    return `/api/artwork?path=${encodeURIComponent(value)}`;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const ha = new URL(HA_URL);
+
+    if (parsed.origin === ha.origin) {
+      return `/api/artwork?path=${encodeURIComponent(parsed.pathname + parsed.search)}`;
+    }
+  } catch {
+    // Keep non-URL values unchanged.
+  }
+
+  return value;
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === "/api/health") {
     return sendJson(res, 200, {
@@ -298,6 +322,53 @@ async function handleApi(req, res, url) {
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
     });
+  }
+
+
+  if (url.pathname === "/api/artwork" && req.method === "GET") {
+    try {
+      if (!homeAssistantConfigured()) {
+        return sendJson(res, 503, { error: "Home Assistant is not configured" });
+      }
+
+      const requestedPath = String(url.searchParams.get("path") || "");
+
+      if (
+        !requestedPath.startsWith("/api/media_player_proxy/") &&
+        !requestedPath.startsWith("/api/image_proxy/")
+      ) {
+        return sendJson(res, 400, { error: "Invalid artwork path" });
+      }
+
+      const response = await fetch(`${HA_URL}${requestedPath}`, {
+        headers: {
+          Authorization: `Bearer ${HA_TOKEN}`
+        }
+      });
+
+      if (!response.ok) {
+        return sendJson(res, response.status, {
+          error: `Artwork request failed (${response.status})`
+        });
+      }
+
+      const contentType = response.headers.get("content-type") || "image/jpeg";
+      const cacheControl =
+        response.headers.get("cache-control") ||
+        "private, max-age=30, stale-while-revalidate=120";
+      const body = Buffer.from(await response.arrayBuffer());
+
+      res.writeHead(200, {
+        "Content-Type": contentType,
+        "Content-Length": body.length,
+        "Cache-Control": cacheControl
+      });
+      res.end(body);
+      return true;
+    } catch (error) {
+      console.error("Artwork proxy failed:", error.message);
+      return sendJson(res, 502, { error: "Unable to load artwork" });
+    }
   }
 
   if (url.pathname === "/api/status") {
@@ -407,7 +478,7 @@ async function handleApi(req, res, url) {
         title: a.media_title || "Nothing playing",
         artist: a.media_artist || "",
         album: a.media_album_name || "",
-        artwork: a.entity_picture || "",
+        artwork: relayArtworkUrl(a.entity_picture || ""),
         position: Math.max(0, position),
         duration: Number(a.media_duration || 0),
         volume: Number(a.volume_level || 0)
