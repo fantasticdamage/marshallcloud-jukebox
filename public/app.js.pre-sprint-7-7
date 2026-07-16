@@ -1,9 +1,7 @@
 const searchInput = document.getElementById("search");
 const searchMessage = document.getElementById("searchMessage");
-const searchModeAll = document.getElementById("searchModeAll");
-const searchModeSong = document.getElementById("searchModeSong");
-const searchModeArtist = document.getElementById("searchModeArtist");
-const searchModeAlbum = document.getElementById("searchModeAlbum");
+const searchModeTracks = document.getElementById("searchModeTracks");
+const searchModeAlbums = document.getElementById("searchModeAlbums");
 const results = document.getElementById("results");
 const searchPagination = document.getElementById("searchPagination");
 const searchMore = document.getElementById("searchMore");
@@ -49,10 +47,10 @@ function showToast(message, type = "success") { toast.textContent = message; toa
 async function queueTrack(track, button) { if (requestsLocked) { showToast("The host has temporarily locked requests.", "error"); return; } const original = button.textContent; button.disabled = true; button.textContent = "Adding…"; try { const response = await fetch("/api/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri: track.uri, guest_name: guestName || "Guest" }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to add track"); button.textContent = "Added"; button.classList.add("added"); showToast(`${track.name} requested by ${guestName || "Guest"}`); loadQueue(); } catch (error) { button.disabled = false; button.textContent = original; showToast(error.message, "error"); } }
 
 let searchTimer;
-let searchMode = "all";
+let searchMode = "track";
 let searchOffset = 0;
 let lastSearchQuery = "";
-let lastSearchMode = "all";
+let lastSearchMode = "track";
 
 function formatDuration(ms) {
   const total = Math.floor(ms / 1000);
@@ -80,7 +78,7 @@ function renderTracks(tracks) {
   }
 
   searchMessage.className = "helper";
-  searchMessage.textContent = `${tracks.length} results`;
+  searchMessage.textContent = `${tracks.length} ${searchMode === "album" ? "album-track" : "track"} results`;
 
   for (const track of tracks) {
     const item = document.createElement("article");
@@ -149,51 +147,26 @@ async function checkHealth() {
 }
 
 function setSearchMode(mode) {
-  const allowedModes = new Set(["all", "song", "artist", "album"]);
-  searchMode = allowedModes.has(mode) ? mode : "all";
-  searchOffset = 0;
+  searchMode = mode === "album" ? "album" : "track";
+  searchModeTracks.classList.toggle("active", searchMode === "track");
+  searchModeAlbums.classList.toggle("active", searchMode === "album");
+  searchInput.placeholder = searchMode === "album"
+    ? "Search by album title"
+    : "Search for a song or artist";
 
-  searchModeAll.classList.toggle("active", searchMode === "all");
-  searchModeSong.classList.toggle("active", searchMode === "song");
-  searchModeArtist.classList.toggle("active", searchMode === "artist");
-  searchModeAlbum.classList.toggle("active", searchMode === "album");
-
-  const prompts = {
-    all: {
-      placeholder: "Search songs, artists, or albums",
-      helper: "Search across songs, artists, and albums."
-    },
-    song: {
-      placeholder: "Search by song title",
-      helper: "Enter a song title."
-    },
-    artist: {
-      placeholder: "Search by artist name",
-      helper: "Enter an artist name."
-    },
-    album: {
-      placeholder: "Search by album title",
-      helper: "Enter an album title."
-    }
-  };
-
-  searchInput.placeholder = prompts[searchMode].placeholder;
   const query = searchInput.value.trim();
   if (query.length >= 2) {
-    performSearch(0);
+    searchOffset = 0;
+    searchInput.dispatchEvent(new Event("input"));
   } else {
-    results.innerHTML = "";
-    searchPagination.classList.add("hidden");
-    searchMessage.className = "helper";
-    searchMessage.textContent = prompts[searchMode].helper;
+    searchMessage.textContent = searchMode === "album"
+      ? "Enter an album title."
+      : "Search for a track or artist.";
   }
 }
 
-searchModeAll.addEventListener("click", () => setSearchMode("all"));
-searchModeSong.addEventListener("click", () => setSearchMode("song"));
-searchModeArtist.addEventListener("click", () => setSearchMode("artist"));
-searchModeAlbum.addEventListener("click", () => setSearchMode("album"));
-setSearchMode("all");
+searchModeTracks.addEventListener("click", () => setSearchMode("track"));
+searchModeAlbums.addEventListener("click", () => setSearchMode("album"));
 
 async function performSearch(offset = 0) {
   clearTimeout(searchTimer);

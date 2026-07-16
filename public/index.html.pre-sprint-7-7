@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0d10">
   <title>Relay</title>
-  <link rel="stylesheet" href="/styles.css?v=0.7.6">
+  <link rel="stylesheet" href="/styles.css?v=0.7.5">
 </head>
 <body>
   <div class="app-shell">
@@ -49,11 +49,9 @@
           </div>
         </div>
 
-        <div class="search-mode" role="group" aria-label="Search filter">
-          <button id="searchModeAll" class="search-mode-button active" type="button">All</button>
-          <button id="searchModeSong" class="search-mode-button" type="button">Song</button>
-          <button id="searchModeArtist" class="search-mode-button" type="button">Artist</button>
-          <button id="searchModeAlbum" class="search-mode-button" type="button">Album</button>
+        <div class="search-mode" role="group" aria-label="Search by track or album">
+          <button id="searchModeTracks" class="search-mode-button active" type="button">Tracks</button>
+          <button id="searchModeAlbums" class="search-mode-button" type="button">Albums</button>
         </div>
         <div class="search-box">
           <span aria-hidden="true">⌕</span>
@@ -90,7 +88,7 @@
 
     <footer>
       <span id="health">Checking server…</span>
-      <span>v0.7.6</span>
+      <span>v0.7.5</span>
     </footer>
   </div>
 
@@ -106,6 +104,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=0.7.6"></script>
+  <script src="/app.js?v=0.7.5"></script>
 </body>
 </html>
