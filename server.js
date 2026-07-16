@@ -13,6 +13,7 @@ const HA_URL = (process.env.HA_URL || "").replace(/\/$/, "");
 const HA_TOKEN = process.env.HA_TOKEN || "";
 const HA_MEDIA_PLAYER = process.env.HA_MEDIA_PLAYER || "media_player.connect";
 const TOKEN_FILE = path.join(DATA_DIR, "spotify-token.json");
+const REQUESTS_FILE = path.join(DATA_DIR, "requests.json");
 const publicDir = path.join(__dirname, "public");
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -57,6 +58,33 @@ function writeToken(token) {
 
 function spotifyConfigured() {
   return Boolean(CLIENT_ID && CLIENT_SECRET && REDIRECT_URI);
+}
+
+function readRequests() {
+  try {
+    const value = JSON.parse(fs.readFileSync(REQUESTS_FILE, "utf8"));
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRequests(requests) {
+  fs.writeFileSync(REQUESTS_FILE, JSON.stringify(requests.slice(-500), null, 2), { mode: 0o600 });
+}
+
+function normalizeGuestName(value) {
+  if (typeof value !== "string") return "Guest";
+  const cleaned = value.trim().replace(/\s+/g, " ").slice(0, 30);
+  return cleaned || "Guest";
+}
+
+function latestRequestsBySpotifyId() {
+  const map = new Map();
+  for (const request of readRequests()) {
+    if (request.spotify_id) map.set(request.spotify_id, request);
+  }
+  return map;
 }
 
 async function spotifyTokenRequest(params) {
@@ -143,12 +171,74 @@ async function homeAssistantRequest(endpoint, options = {}) {
 }
 function validateSpotifyTrackUri(value) { return typeof value === "string" && /^spotify:track:[A-Za-z0-9]+$/.test(value); }
 
+
+function extractSpotifyTrackId(contentId) {
+  if (typeof contentId !== "string") return "";
+  let decoded = contentId;
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  const match = decoded.match(/spotify:track:([A-Za-z0-9]+)/);
+  return match ? match[1] : "";
+}
+
+async function getMediaPlayerState() {
+  return homeAssistantRequest(`/api/states/${encodeURIComponent(HA_MEDIA_PLAYER)}`);
+}
+
+function calculateCurrentRemainingSeconds(state) {
+  const attributes = state?.attributes || {};
+  const duration = Number(attributes.media_duration || 0);
+  let position = Number(attributes.media_position || 0);
+  if (state?.state === "playing" && attributes.media_position_updated_at) {
+    const updated = Date.parse(attributes.media_position_updated_at);
+    if (Number.isFinite(updated)) {
+      position += Math.max(0, (Date.now() - updated) / 1000);
+    }
+  }
+  return Math.max(0, duration - position);
+}
+
+async function enrichQueueItems(items) {
+  const ids = items.map((item) => extractSpotifyTrackId(item.content_id));
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  let tracksById = new Map();
+
+  if (uniqueIds.length) {
+    try {
+      const data = await spotifyApi(`/tracks?ids=${encodeURIComponent(uniqueIds.slice(0, 50).join(","))}`);
+      tracksById = new Map((data?.tracks || []).filter(Boolean).map((track) => [track.id, track]));
+    } catch (error) {
+      console.warn("Spotify queue enrichment failed:", error.message);
+    }
+  }
+
+  return items.map((item, index) => {
+    const spotifyId = ids[index];
+    const track = tracksById.get(spotifyId);
+    return {
+      ...item,
+      spotify_id: spotifyId,
+      image: track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url || "",
+      duration_ms: Number(track?.duration_ms || 0),
+      explicit: Boolean(track?.explicit),
+      spotify_url: track?.external_urls?.spotify || ""
+    };
+  });
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === "/api/health") {
     return sendJson(res, 200, {
       status: "ok",
       app: "MarshallCloud Jukebox",
-      version: "0.4.1",
+      version: "0.5.0",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -210,24 +300,22 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/queue" && req.method === "GET") {
     try {
-      const response = await homeAssistantRequest(
-        "/api/services/sonos/get_queue?return_response",
-        {
+      const [response, playerState] = await Promise.all([
+        homeAssistantRequest("/api/services/sonos/get_queue?return_response", {
           method: "POST",
-          body: JSON.stringify({
-            entity_id: HA_MEDIA_PLAYER
-          })
-        }
-      );
+          body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER })
+        }),
+        getMediaPlayerState()
+      ]);
 
       const rawItems =
         response?.service_response?.[HA_MEDIA_PLAYER] ||
         response?.[HA_MEDIA_PLAYER] ||
         [];
 
-      const items = Array.isArray(rawItems)
+      const normalized = Array.isArray(rawItems)
         ? rawItems.map((item, index) => ({
-            position: index + 1,
+            queue_position: index + 1,
             title: item.media_title || "Unknown title",
             artist: item.media_artist || "",
             album: item.media_album_name || "",
@@ -235,7 +323,29 @@ async function handleApi(req, res, url) {
           }))
         : [];
 
-      return sendJson(res, 200, { items });
+      const enriched = await enrichQueueItems(normalized);
+      const currentPosition = Math.max(1, Number(playerState?.attributes?.queue_position || 1));
+      const upcoming = enriched.slice(currentPosition);
+      let waitSeconds = calculateCurrentRemainingSeconds(playerState);
+
+      const requestsById = latestRequestsBySpotifyId();
+      const items = upcoming.map((item, index) => {
+        const request = requestsById.get(item.spotify_id);
+        const result = {
+          ...item,
+          position: index + 1,
+          estimated_wait_seconds: Math.round(waitSeconds),
+          requested_by: request?.guest_name || ""
+        };
+        waitSeconds += item.duration_ms / 1000;
+        return result;
+      });
+
+      return sendJson(res, 200, {
+        items,
+        current_queue_position: currentPosition,
+        total_queue_size: enriched.length
+      });
     } catch (error) {
       console.error("Queue read failed:", error.message);
       return sendJson(res, error.statusCode || 500, { error: error.message });
@@ -245,10 +355,64 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/queue" && req.method === "POST") {
     try {
       const body = await readJsonBody(req);
-      if (!validateSpotifyTrackUri(body.uri)) return sendJson(res, 400, { error: "A valid Spotify track URI is required." });
-      await homeAssistantRequest("/api/services/media_player/play_media", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER, media_content_id: body.uri, media_content_type: "music", enqueue: "add" }) });
-      return sendJson(res, 200, { status: "queued", entity_id: HA_MEDIA_PLAYER, uri: body.uri });
-    } catch (error) { console.error("Queue request failed:", error.message); return sendJson(res, error.statusCode || 500, { error: error.message }); }
+      if (!validateSpotifyTrackUri(body.uri)) {
+        return sendJson(res, 400, { error: "A valid Spotify track URI is required." });
+      }
+
+      const spotifyId = extractSpotifyTrackId(body.uri);
+      const guestName = normalizeGuestName(body.guest_name);
+      const queueResponse = await homeAssistantRequest(
+        "/api/services/sonos/get_queue?return_response",
+        {
+          method: "POST",
+          body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER })
+        }
+      );
+      const rawItems =
+        queueResponse?.service_response?.[HA_MEDIA_PLAYER] ||
+        queueResponse?.[HA_MEDIA_PLAYER] ||
+        [];
+      const duplicateIndex = Array.isArray(rawItems)
+        ? rawItems.findIndex((item) => extractSpotifyTrackId(item.media_content_id || "") === spotifyId)
+        : -1;
+
+      if (duplicateIndex >= 0) {
+        return sendJson(res, 409, {
+          error: "That song is already in the Sonos queue.",
+          duplicate: true,
+          queue_position: duplicateIndex + 1
+        });
+      }
+
+      await homeAssistantRequest("/api/services/media_player/play_media", {
+        method: "POST",
+        body: JSON.stringify({
+          entity_id: HA_MEDIA_PLAYER,
+          media_content_id: body.uri,
+          media_content_type: "music",
+          enqueue: "add"
+        })
+      });
+
+      const requests = readRequests();
+      requests.push({
+        spotify_id: spotifyId,
+        uri: body.uri,
+        guest_name: guestName,
+        requested_at: new Date().toISOString()
+      });
+      writeRequests(requests);
+
+      return sendJson(res, 200, {
+        status: "queued",
+        entity_id: HA_MEDIA_PLAYER,
+        uri: body.uri,
+        guest_name: guestName
+      });
+    } catch (error) {
+      console.error("Queue request failed:", error.message);
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
   }
 
   return false;
@@ -356,5 +520,5 @@ http.createServer((req, res) => {
     sendJson(res, 500, { error: "Internal server error" });
   });
 }).listen(PORT, "0.0.0.0", () => {
-  console.log(`MarshallCloud Jukebox v0.4.1 listening on port ${PORT}`);
+  console.log(`MarshallCloud Jukebox v0.5.0 listening on port ${PORT}`);
 });

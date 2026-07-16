@@ -1,4 +1,4 @@
-# MarshallCloud Jukebox v0.2.0
+# MarshallCloud Jukebox v0.5.0
 
 This release adds secure Spotify Authorization Code authentication and live track search.
 
@@ -52,3 +52,19 @@ This release adds:
 - Queue numbering
 - Highlighting for the next track
 - Empty and error states
+
+
+## Queue metadata enrichment
+
+- Spotify album artwork
+- Track duration and explicit indicator
+- Estimated wait time based on the current track and queued durations
+- Automatic asset cache-busting for v0.4.2
+
+
+## Guest requests
+
+- Guests choose a display name stored in their browser.
+- Requested songs show the guest name in the live queue.
+- Duplicate tracks already present in the Sonos queue are rejected.
+- Request metadata is stored in the persistent Docker data volume.

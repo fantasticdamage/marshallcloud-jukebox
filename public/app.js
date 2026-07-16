@@ -6,15 +6,51 @@ const connectionBadge = document.getElementById("connectionBadge");
 const health = document.getElementById("health");
 const queueList = document.getElementById("queueList");
 const queueCount = document.getElementById("queueCount");
+const guestButton = document.getElementById("guestButton");
+const guestModal = document.getElementById("guestModal");
+const guestForm = document.getElementById("guestForm");
+const guestNameInput = document.getElementById("guestNameInput");
+
+let guestName = localStorage.getItem("jukebox_guest_name") || "";
+
+function openGuestModal() {
+  guestNameInput.value = guestName;
+  guestModal.classList.remove("hidden");
+  setTimeout(() => guestNameInput.focus(), 0);
+}
+
+function updateGuestUi() {
+  guestButton.textContent = `Requesting as ${guestName || "Guest"}`;
+}
+
+guestButton.addEventListener("click", openGuestModal);
+guestForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const value = guestNameInput.value.trim().replace(/\s+/g, " ").slice(0, 30);
+  if (!value) return;
+  guestName = value;
+  localStorage.setItem("jukebox_guest_name", guestName);
+  updateGuestUi();
+  guestModal.classList.add("hidden");
+});
+
+updateGuestUi();
+if (!guestName) openGuestModal();
 const toast = document.createElement("div"); toast.className = "toast"; document.body.appendChild(toast);
 function showToast(message, type = "success") { toast.textContent = message; toast.className = `toast show ${type}`; clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.className = "toast", 3200); }
-async function queueTrack(track, button) { const original = button.textContent; button.disabled = true; button.textContent = "Adding…"; try { const response = await fetch("/api/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri: track.uri }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to add track"); button.textContent = "Added"; button.classList.add("added"); showToast(`${track.name} added to the Sonos queue`); } catch (error) { button.disabled = false; button.textContent = original; showToast(error.message, "error"); } }
+async function queueTrack(track, button) { const original = button.textContent; button.disabled = true; button.textContent = "Adding…"; try { const response = await fetch("/api/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri: track.uri, guest_name: guestName || "Guest" }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to add track"); button.textContent = "Added"; button.classList.add("added"); showToast(`${track.name} requested by ${guestName || "Guest"}`); loadQueue(); } catch (error) { button.disabled = false; button.textContent = original; showToast(error.message, "error"); } }
 
 let searchTimer;
 
 function formatDuration(ms) {
   const total = Math.floor(ms / 1000);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function formatWait(seconds) {
+  const minutes = Math.max(0, Math.round(Number(seconds || 0) / 60));
+  if (minutes <= 1) return "Up next";
+  return `About ${minutes} minutes`;
 }
 
 function escapeHtml(value) {
@@ -152,12 +188,20 @@ function renderQueue(items) {
   queueList.innerHTML = items.map((item, index) => `
     <article class="queue-item ${index === 0 ? "next-track" : ""}">
       <div class="queue-position">${item.position}</div>
-      <div>
-        <p class="queue-title">${escapeHtml(item.title)}</p>
+      <div class="queue-artwork ${item.image ? "" : "queue-artwork-empty"}">
+        ${item.image ? `<img src="${item.image}" alt="">` : "♫"}
+      </div>
+      <div class="queue-copy">
+        <p class="queue-title">
+          ${escapeHtml(item.title)}
+          ${item.explicit ? '<span class="explicit">E</span>' : ""}
+        </p>
         <p class="queue-meta">
           ${escapeHtml(item.artist || "Unknown artist")}
-          ${item.album ? ` · ${escapeHtml(item.album)}` : ""}
+          ${item.duration_ms ? ` · ${formatDuration(item.duration_ms)}` : ""}
         </p>
+        <p class="queue-wait">${formatWait(item.estimated_wait_seconds)}</p>
+        ${item.requested_by ? `<p class="queue-requester">Requested by ${escapeHtml(item.requested_by)}</p>` : ""}
       </div>
       ${index === 0 ? '<span class="next-badge">Up next</span>' : ""}
     </article>

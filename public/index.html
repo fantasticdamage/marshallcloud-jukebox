@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0d10">
   <title>MarshallCloud Jukebox</title>
-  <link rel="stylesheet" href="/styles.css?v=0.4.1">
+  <link rel="stylesheet" href="/styles.css?v=0.5.0">
 </head>
 <body>
   <div class="app-shell">
@@ -15,6 +15,7 @@
         <h1>Jukebox</h1>
       </div>
       <div class="header-actions">
+        <button id="guestButton" class="guest-button" type="button">Requesting as Guest</button>
         <span id="connectionBadge" class="badge">Checking Spotify</span>
         <a id="spotifyLogin" class="button primary hidden" href="/auth/login">Connect Spotify</a>
       </div>
@@ -77,10 +78,22 @@
 
     <footer>
       <span id="health">Checking server…</span>
-      <span>v0.4.1</span>
+      <span>v0.5.0</span>
     </footer>
   </div>
 
-  <script src="/app.js?v=0.4.1"></script>
+  <div id="guestModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="guestTitle">
+    <div class="modal-card">
+      <p class="eyebrow">WELCOME</p>
+      <h2 id="guestTitle">What should we call you?</h2>
+      <p class="modal-copy">Your name will appear beside songs you request.</p>
+      <form id="guestForm">
+        <input id="guestNameInput" maxlength="30" autocomplete="name" placeholder="Your name" required>
+        <button class="button primary" type="submit">Continue</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js?v=0.5.0"></script>
 </body>
 </html>
