@@ -377,9 +377,33 @@ searchMore.addEventListener("click", () => {
 searchStartOver.addEventListener("click", () => {
   performSearch(0);
 });
+
+searchMore.addEventListener("click", () => {
+  const query = searchInput.value.trim();
+  if (query !== lastSearchQuery || searchMode !== lastSearchMode) {
+    performSearch(0);
+    return;
+  }
+  performSearch(searchOffset + 15);
+});
+
 searchStartOver.addEventListener("click", () => {
   performSearch(0);
 });
+
+searchMore.addEventListener("click", () => {
+  const query = searchInput.value.trim();
+  if (query !== lastSearchQuery || searchMode !== lastSearchMode) {
+    performSearch(0);
+    return;
+  }
+  performSearch(searchOffset + 15);
+});
+
+searchStartOver.addEventListener("click", () => {
+  performSearch(0);
+});
+
 const params = new URLSearchParams(window.location.search);
 if (params.has("spotify") || params.has("spotify_error")) {
   history.replaceState({}, "", "/");
