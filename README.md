@@ -1,52 +1,43 @@
-# MarshallCloud Jukebox
+# MarshallCloud Jukebox v0.2.0
 
-Milestone 1 foundation for a self-hosted Spotify/Home Assistant/Sonos party jukebox.
+This release adds secure Spotify Authorization Code authentication and live track search.
 
-## What works in v0.1.0
+## Configure
 
-- Mobile-friendly landing page
-- Now-playing placeholder
-- Spotify-search placeholder
-- Queue placeholder
-- Health endpoint at `/api/health`
-- Docker deployment on port `3000`
+Create a private `.env` file in the project directory:
 
-Spotify OAuth and Home Assistant/Sonos control are intentionally left for the next milestones.
+```bash
+cp .env.example .env
+nano .env
+```
 
-## Deploy from the Ubuntu Docker host
+Enter the rotated Spotify client ID and client secret. Never commit `.env`.
 
-1. Copy this project folder to the Ubuntu server.
-2. From inside the folder, run:
+The Spotify app must include this exact redirect URI:
 
-   ```bash
-   docker compose up -d --build
-   ```
+```text
+https://jukebox.marshallcloud.net/auth/callback
+```
 
-3. Test locally:
-
-   ```text
-   http://192.168.1.73:3000
-   ```
-
-4. Your existing Nginx Proxy Manager host should forward:
-
-   ```text
-   jukebox.marshallcloud.net -> http://192.168.1.73:3000
-   ```
-
-5. Test:
-
-   ```text
-   https://jukebox.marshallcloud.net
-   ```
-
-## Stop or update
+## Deploy
 
 ```bash
 docker compose down
 docker compose up -d --build
 ```
 
-## Important security note
+Open:
 
-Do not commit `.env` or expose the Spotify client secret or Home Assistant token. The screenshot shared during setup exposed a Spotify secret, so rotate that secret before using it in this project.
+```text
+https://jukebox.marshallcloud.net
+```
+
+Select **Connect Spotify**, authorize the app, then search for tracks.
+
+## Current scope
+
+- Spotify OAuth and refresh-token persistence
+- Live Spotify track search
+- Album artwork, artist, duration, and explicit indicator
+- Persistent Docker volume for the Spotify token
+- Sonos/Home Assistant queue controls are the next milestone

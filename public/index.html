@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0d0f12">
+  <meta name="theme-color" content="#0b0d10">
   <title>MarshallCloud Jukebox</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -14,7 +14,10 @@
         <p class="eyebrow">MARSHALLCLOUD</p>
         <h1>Jukebox</h1>
       </div>
-      <button class="host-button" type="button" aria-label="Open host controls">Host</button>
+      <div class="header-actions">
+        <span id="connectionBadge" class="badge">Checking Spotify</span>
+        <a id="spotifyLogin" class="button primary hidden" href="/auth/login">Connect Spotify</a>
+      </div>
     </header>
 
     <main>
@@ -25,33 +28,32 @@
         </div>
 
         <div class="track-layout">
-          <div class="album-art" aria-label="Album artwork placeholder">
-            <svg viewBox="0 0 120 120" role="img" aria-label="Music note">
-              <rect width="120" height="120" rx="20"></rect>
-              <path d="M74 27v52.5a15 15 0 1 1-7-12.7V40l32-7v38.5a15 15 0 1 1-7-12.7V27z"></path>
-            </svg>
-          </div>
+          <div class="album-art">♫</div>
           <div class="track-copy">
             <p class="track-title">Ready for the party</p>
-            <p class="track-artist">Spotify and Sonos connection coming next</p>
-            <div class="progress">
-              <div class="progress-fill"></div>
-            </div>
-            <div class="time-row">
-              <span>0:00</span>
-              <span>0:00</span>
-            </div>
+            <p class="track-artist">Sonos playback arrives in the next milestone</p>
+            <div class="progress"><div class="progress-fill"></div></div>
+            <div class="time-row"><span>0:00</span><span>0:00</span></div>
           </div>
         </div>
       </section>
 
       <section class="search-panel">
-        <label for="search">Search Spotify</label>
+        <div class="search-heading">
+          <div>
+            <p class="eyebrow">DISCOVER</p>
+            <h2>Search Spotify</h2>
+          </div>
+        </div>
+
         <div class="search-box">
           <span aria-hidden="true">⌕</span>
-          <input id="search" type="search" placeholder="Search for a song or artist" disabled>
+          <input id="search" type="search" autocomplete="off"
+                 placeholder="Search for a song or artist" disabled>
         </div>
-        <p class="helper">Search will activate after Spotify authentication is connected.</p>
+
+        <p id="searchMessage" class="helper">Connect Spotify to start searching.</p>
+        <div id="results" class="results"></div>
       </section>
 
       <section class="queue-section">
@@ -66,14 +68,14 @@
         <div class="empty-state card">
           <div class="empty-icon">♫</div>
           <h3>The queue is empty</h3>
-          <p>Once Spotify is connected, guests will be able to search and request songs here.</p>
+          <p>Search works in this release. Requested songs will be added to the Sonos queue.</p>
         </div>
       </section>
     </main>
 
     <footer>
       <span id="health">Checking server…</span>
-      <span>v0.1.0</span>
+      <span>v0.3.0</span>
     </footer>
   </div>
 
