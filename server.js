@@ -293,7 +293,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       status: "ok",
       app: "Relay",
-      version: "0.7.6",
+      version: "0.7.5",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -323,9 +323,7 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/search") {
     const query = (url.searchParams.get("q") || "").trim();
-    const requestedMode = (url.searchParams.get("mode") || "all").toLowerCase();
-    const allowedModes = new Set(["all", "song", "artist", "album"]);
-    const mode = allowedModes.has(requestedMode) ? requestedMode : "all";
+    const mode = url.searchParams.get("mode") === "album" ? "album" : "track";
     const requestedOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
     const offset = Number.isFinite(requestedOffset)
       ? Math.max(0, Math.min(requestedOffset, 1000))
@@ -336,13 +334,7 @@ async function handleApi(req, res, url) {
     }
 
     try {
-      const searchPrefixes = {
-        all: "",
-        song: "track:",
-        artist: "artist:",
-        album: "album:"
-      };
-      const spotifyQuery = `${searchPrefixes[mode]}${query}`;
+      const spotifyQuery = mode === "album" ? `album:${query}` : query;
 
       async function searchPage(limit, pageOffset) {
         return spotifyApi(`/search?${new URLSearchParams({
@@ -841,7 +833,7 @@ const heartbeat = setInterval(() => {
 heartbeat.unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Relay v0.7.6 listening on port ${PORT}`);
+  console.log(`Relay v0.7.5 listening on port ${PORT}`);
   console.log("Relay WebSocket server listening on /ws");
   setTimeout(() => syncRealtimeSnapshots(), 750).unref();
   const realtimeSyncTimer = setInterval(syncRealtimeSnapshots, 2000);

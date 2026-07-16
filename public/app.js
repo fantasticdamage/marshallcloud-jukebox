@@ -250,9 +250,145 @@ async function performSearch(offset = 0) {
   }
 }
 
+async function performSearch(offset = 0) {
+  clearTimeout(searchTimer);
+  const query = searchInput.value.trim();
+
+  if (query.length < 2) {
+    results.innerHTML = "";
+    searchPagination.classList.add("hidden");
+    searchMessage.className = "helper";
+    searchMessage.textContent = "Type at least two characters.";
+    return;
+  }
+
+  searchOffset = Math.max(0, offset);
+  lastSearchQuery = query;
+  lastSearchMode = searchMode;
+  searchMessage.className = "helper";
+  searchMessage.textContent = "Searching…";
+  searchMore.disabled = true;
+  searchStartOver.disabled = true;
+
+  try {
+    const response = await fetch(
+      `/api/search?q=${encodeURIComponent(query)}` +
+      `&mode=${encodeURIComponent(searchMode)}` +
+      `&offset=${searchOffset}`,
+      { cache: "no-store" }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Search failed");
+
+    renderTracks(data.tracks || []);
+
+    const firstResult = data.tracks?.length ? searchOffset + 1 : 0;
+    const lastResult = searchOffset + (data.tracks?.length || 0);
+    searchMessage.className = "helper";
+    searchMessage.textContent = data.tracks?.length
+      ? `Showing results ${firstResult}–${lastResult}`
+      : "No more results found.";
+
+    searchPagination.classList.toggle(
+      "hidden",
+      searchOffset === 0 && !data.has_more
+    );
+    searchStartOver.classList.toggle("hidden", searchOffset === 0);
+    searchMore.classList.toggle("hidden", !data.has_more);
+    searchMore.disabled = false;
+    searchStartOver.disabled = false;
+  } catch (error) {
+    results.innerHTML = "";
+    searchPagination.classList.add("hidden");
+    searchMessage.textContent = error.message;
+    searchMessage.className = "helper error";
+  }
+}
+
+async function performSearch(offset = 0) {
+  clearTimeout(searchTimer);
+  const query = searchInput.value.trim();
+
+  if (query.length < 2) {
+    results.innerHTML = "";
+    searchPagination.classList.add("hidden");
+    searchMessage.className = "helper";
+    searchMessage.textContent = "Type at least two characters.";
+    return;
+  }
+
+  searchOffset = Math.max(0, offset);
+  lastSearchQuery = query;
+  lastSearchMode = searchMode;
+  searchMessage.className = "helper";
+  searchMessage.textContent = "Searching…";
+  searchMore.disabled = true;
+  searchStartOver.disabled = true;
+
+  try {
+    const response = await fetch(
+      `/api/search?q=${encodeURIComponent(query)}` +
+      `&mode=${encodeURIComponent(searchMode)}` +
+      `&offset=${searchOffset}`,
+      { cache: "no-store" }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Search failed");
+
+    renderTracks(data.tracks || []);
+
+    const firstResult = data.tracks?.length ? searchOffset + 1 : 0;
+    const lastResult = searchOffset + (data.tracks?.length || 0);
+    searchMessage.className = "helper";
+    searchMessage.textContent = data.tracks?.length
+      ? `Showing results ${firstResult}–${lastResult}`
+      : "No more results found.";
+
+    searchPagination.classList.toggle(
+      "hidden",
+      searchOffset === 0 && !data.has_more
+    );
+    searchStartOver.classList.toggle("hidden", searchOffset === 0);
+    searchMore.classList.toggle("hidden", !data.has_more);
+    searchMore.disabled = false;
+    searchStartOver.disabled = false;
+  } catch (error) {
+    results.innerHTML = "";
+    searchPagination.classList.add("hidden");
+    searchMessage.textContent = error.message;
+    searchMessage.className = "helper error";
+  }
+}
+
 searchInput.addEventListener("input", () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => performSearch(0), 350);
+});
+
+searchMore.addEventListener("click", () => {
+  const query = searchInput.value.trim();
+  if (query !== lastSearchQuery || searchMode !== lastSearchMode) {
+    performSearch(0);
+    return;
+  }
+  performSearch(searchOffset + 15);
+});
+
+searchStartOver.addEventListener("click", () => {
+  performSearch(0);
+});
+
+searchMore.addEventListener("click", () => {
+  const query = searchInput.value.trim();
+  if (query !== lastSearchQuery || searchMode !== lastSearchMode) {
+    performSearch(0);
+    return;
+  }
+  performSearch(searchOffset + 15);
+});
+
+searchStartOver.addEventListener("click", () => {
+  performSearch(0);
 });
 
 searchMore.addEventListener("click", () => {
