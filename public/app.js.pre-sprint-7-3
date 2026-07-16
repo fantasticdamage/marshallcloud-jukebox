@@ -228,7 +228,7 @@ async function loadQueue() {
 }
 
 loadQueue();
-setInterval(loadQueue, 120000);
+setInterval(loadQueue, 30000);
 
 
 let relaySocket;
@@ -252,23 +252,8 @@ function connectRelayWebSocket() {
       }
 
       if (data.event === "queue_updated") {
-        console.info("Relay queue snapshot received", data.payload);
-        if (Array.isArray(data.payload?.items)) {
-          renderQueue(data.payload.items);
-        } else {
-          loadQueue();
-        }
-      }
-
-      if (data.event === "now_playing_updated") {
-        console.info("Relay playback snapshot received", data.payload);
-        if (typeof renderNowPlaying === "function") {
-          renderNowPlaying(data.payload);
-        } else if (typeof updateNowPlaying === "function") {
-          updateNowPlaying(data.payload);
-        } else if (typeof loadNowPlaying === "function") {
-          loadNowPlaying();
-        }
+        console.info("Relay queue update received", data.payload);
+        loadQueue();
       }
     } catch (error) {
       console.warn("Invalid Relay WebSocket message", error);

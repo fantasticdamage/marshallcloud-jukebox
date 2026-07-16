@@ -293,7 +293,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       status: "ok",
       app: "Relay",
-      version: "0.7.2",
+      version: "0.7.1",
       spotifyConfigured: spotifyConfigured(),
       spotifyConnected: Boolean(readToken()),
       homeAssistantConfigured: homeAssistantConfigured()
@@ -567,64 +567,9 @@ function broadcast(event, payload = {}) {
   }
 }
 
-let lastRealtimeQueueHash = "";
-let lastRealtimePlaybackHash = "";
-let realtimeSyncRunning = false;
-
-async function fetchRelaySnapshot(pathname) {
-  const response = await fetch(`http://127.0.0.1:${PORT}${pathname}`, {
-    headers: { Accept: "application/json" }
-  });
-
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload?.error || `Snapshot request failed (${response.status})`);
-  }
-  return payload;
-}
-
-async function broadcastQueueSnapshot(force = false) {
-  try {
-    const payload = await fetchRelaySnapshot("/api/queue");
-    const hash = JSON.stringify(payload);
-    if (force || hash !== lastRealtimeQueueHash) {
-      lastRealtimeQueueHash = hash;
-      broadcast("queue_updated", payload);
-    }
-  } catch (error) {
-    console.warn("Relay queue snapshot failed:", error.message);
-  }
-}
-
-async function broadcastPlaybackSnapshot(force = false) {
-  try {
-    const payload = await fetchRelaySnapshot("/api/now-playing");
-    const hash = JSON.stringify(payload);
-    if (force || hash !== lastRealtimePlaybackHash) {
-      lastRealtimePlaybackHash = hash;
-      broadcast("now_playing_updated", payload);
-    }
-  } catch (error) {
-    console.warn("Relay playback snapshot failed:", error.message);
-  }
-}
-
-async function syncRealtimeSnapshots() {
-  if (realtimeSyncRunning) return;
-  realtimeSyncRunning = true;
-  try {
-    await Promise.all([
-      broadcastQueueSnapshot(),
-      broadcastPlaybackSnapshot()
-    ]);
-  } finally {
-    realtimeSyncRunning = false;
-  }
-}
-
 function notifyQueueUpdated(payload = {}) {
-  broadcastQueueSnapshot(true);
-  const delayed = setTimeout(() => broadcastQueueSnapshot(true), 1200);
+  broadcast("queue_updated", payload);
+  const delayed = setTimeout(() => broadcast("queue_updated", payload), 1200);
   delayed.unref();
 }
 
@@ -739,10 +684,6 @@ const websocketServer = new WebSocketServer({ server, path: "/ws" });
 
 websocketServer.on("connection", (socket) => {
   websocketClients.add(socket);
-  setTimeout(() => {
-    broadcastQueueSnapshot(true);
-    broadcastPlaybackSnapshot(true);
-  }, 100).unref();
   socket.send(JSON.stringify({
     event: "connected",
     payload: websocketStatus(),
@@ -761,9 +702,6 @@ const heartbeat = setInterval(() => {
 heartbeat.unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Relay v0.7.2 listening on port ${PORT}`);
+  console.log(`Relay v0.7.1 listening on port ${PORT}`);
   console.log("Relay WebSocket server listening on /ws");
-  setTimeout(() => syncRealtimeSnapshots(), 750).unref();
-  const realtimeSyncTimer = setInterval(syncRealtimeSnapshots, 2000);
-  realtimeSyncTimer.unref();
 });
