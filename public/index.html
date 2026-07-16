@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0d10">
   <title>MarshallCloud Jukebox</title>
-  <link rel="stylesheet" href="/styles.css?v=0.4.0">
+  <link rel="stylesheet" href="/styles.css?v=0.4.1">
 </head>
 <body>
   <div class="app-shell">
@@ -28,13 +28,12 @@
         </div>
 
         <div class="track-layout">
-          <div id="albumArt" class="album-art">♫</div>
+          <div class="album-art">♫</div>
           <div class="track-copy">
-            <p id="trackTitle" class="track-title">Ready for the party</p>
-            <p id="trackArtist" class="track-artist">Waiting for Sonos playback</p>
-            <p id="trackAlbum" class="track-album"></p>
-            <div class="progress"><div id="progressFill" class="progress-fill"></div></div>
-            <div class="time-row"><span id="elapsedTime">0:00</span><span id="durationTime">0:00</span></div>
+            <p class="track-title">Ready for the party</p>
+            <p class="track-artist">Sonos playback arrives in the next milestone</p>
+            <div class="progress"><div class="progress-fill"></div></div>
+            <div class="time-row"><span>0:00</span><span>0:00</span></div>
           </div>
         </div>
       </section>
@@ -63,23 +62,25 @@
             <p class="eyebrow">COMING UP</p>
             <h2>Party queue</h2>
           </div>
-          <span class="queue-count">0 songs</span>
+          <span id="queueCount" class="queue-count">0 songs</span>
         </div>
 
-        <div class="empty-state card">
-          <div class="empty-icon">♫</div>
-          <h3>The queue is empty</h3>
-          <p>Search works in this release. Requested songs will be added to the Sonos queue.</p>
+        <div id="queueList" class="queue-list">
+          <div class="empty-state card">
+            <div class="empty-icon">♫</div>
+            <h3>The queue is empty</h3>
+            <p>Requested songs will appear here automatically.</p>
+          </div>
         </div>
       </section>
     </main>
 
     <footer>
       <span id="health">Checking server…</span>
-      <span>v0.4.0</span>
+      <span>v0.4.1</span>
     </footer>
   </div>
 
-  <script src="/app.js?v=0.4.0"></script>
+  <script src="/app.js?v=0.4.1"></script>
 </body>
 </html>

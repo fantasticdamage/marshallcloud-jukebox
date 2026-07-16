@@ -1,6 +1,4 @@
-# MarshallCloud Jukebox v0.4.0
-
-Adds a live Home Assistant/Sonos Now Playing card with album artwork, title, artist, album, playback state, and a smoothly advancing progress bar.
+# MarshallCloud Jukebox v0.2.0
 
 This release adds secure Spotify Authorization Code authentication and live track search.
 
@@ -43,3 +41,14 @@ Select **Connect Spotify**, authorize the app, then search for tracks.
 - Album artwork, artist, duration, and explicit indicator
 - Persistent Docker volume for the Spotify token
 - Sonos/Home Assistant queue controls are the next milestone
+
+
+## Live Sonos queue
+
+This release adds:
+
+- Live queue retrieval through `sonos.get_queue`
+- Automatic refresh every 5 seconds
+- Queue numbering
+- Highlighting for the next track
+- Empty and error states

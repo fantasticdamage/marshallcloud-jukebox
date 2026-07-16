@@ -1,65 +1,11 @@
-const albumArt = document.getElementById("albumArt");
-const trackTitle = document.getElementById("trackTitle");
-const trackArtist = document.getElementById("trackArtist");
-const trackAlbum = document.getElementById("trackAlbum");
-const progressFill = document.getElementById("progressFill");
-const elapsedTime = document.getElementById("elapsedTime");
-const durationTime = document.getElementById("durationTime");
-
-let nowPlaying = { position: 0, duration: 0, state: "unknown", receivedAt: Date.now() };
-let currentArtwork = "";
-
-function formatSeconds(value) {
-  const seconds = Math.max(0, Math.floor(Number(value) || 0));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-function renderProgress() {
-  let position = nowPlaying.position;
-  if (nowPlaying.state === "playing") {
-    position += (Date.now() - nowPlaying.receivedAt) / 1000;
-  }
-  if (nowPlaying.duration > 0) position = Math.min(position, nowPlaying.duration);
-  progressFill.style.width = nowPlaying.duration > 0 ? `${(position / nowPlaying.duration) * 100}%` : "0%";
-  elapsedTime.textContent = formatSeconds(position);
-  durationTime.textContent = formatSeconds(nowPlaying.duration);
-}
-
-async function loadNowPlaying() {
-  try {
-    const response = await fetch("/api/now-playing", { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Unable to read Sonos");
-
-    nowPlaying = {
-      position: Number(data.position || 0),
-      duration: Number(data.duration || 0),
-      state: data.state || "unknown",
-      receivedAt: Date.now()
-    };
-    trackTitle.textContent = data.title || "Nothing playing";
-    trackArtist.textContent = data.artist || (data.state === "idle" ? "Sonos is idle" : "");
-    trackAlbum.textContent = data.album || "";
-
-    if (data.artwork && data.artwork !== currentArtwork) {
-      currentArtwork = data.artwork;
-      albumArt.innerHTML = `<img src="${data.artwork}" alt="Album artwork">`;
-    } else if (!data.artwork) {
-      currentArtwork = "";
-      albumArt.textContent = "♫";
-    }
-    renderProgress();
-  } catch (error) {
-    trackArtist.textContent = error.message;
-  }
-}
-
 const searchInput = document.getElementById("search");
 const searchMessage = document.getElementById("searchMessage");
 const results = document.getElementById("results");
 const loginButton = document.getElementById("spotifyLogin");
 const connectionBadge = document.getElementById("connectionBadge");
 const health = document.getElementById("health");
+const queueList = document.getElementById("queueList");
+const queueCount = document.getElementById("queueCount");
 const toast = document.createElement("div"); toast.className = "toast"; document.body.appendChild(toast);
 function showToast(message, type = "success") { toast.textContent = message; toast.className = `toast show ${type}`; clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.className = "toast", 3200); }
 async function queueTrack(track, button) { const original = button.textContent; button.disabled = true; button.textContent = "Adding…"; try { const response = await fetch("/api/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ uri: track.uri }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Unable to add track"); button.textContent = "Added"; button.classList.add("added"); showToast(`${track.name} added to the Sonos queue`); } catch (error) { button.disabled = false; button.textContent = original; showToast(error.message, "error"); } }
@@ -187,6 +133,52 @@ if (params.has("spotify") || params.has("spotify_error")) {
 
 checkHealth();
 loadStatus();
-loadNowPlaying();
-setInterval(loadNowPlaying, 5000);
-setInterval(renderProgress, 1000);
+
+
+function renderQueue(items) {
+  queueCount.textContent = `${items.length} ${items.length === 1 ? "song" : "songs"}`;
+
+  if (!items.length) {
+    queueList.innerHTML = `
+      <div class="empty-state card">
+        <div class="empty-icon">♫</div>
+        <h3>The queue is empty</h3>
+        <p>Requested songs will appear here automatically.</p>
+      </div>
+    `;
+    return;
+  }
+
+  queueList.innerHTML = items.map((item, index) => `
+    <article class="queue-item ${index === 0 ? "next-track" : ""}">
+      <div class="queue-position">${item.position}</div>
+      <div>
+        <p class="queue-title">${escapeHtml(item.title)}</p>
+        <p class="queue-meta">
+          ${escapeHtml(item.artist || "Unknown artist")}
+          ${item.album ? ` · ${escapeHtml(item.album)}` : ""}
+        </p>
+      </div>
+      ${index === 0 ? '<span class="next-badge">Up next</span>' : ""}
+    </article>
+  `).join("");
+}
+
+async function loadQueue() {
+  try {
+    const response = await fetch("/api/queue", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to load queue");
+    renderQueue(data.items || []);
+  } catch (error) {
+    queueList.innerHTML = `
+      <div class="queue-error card">
+        <strong>Queue unavailable</strong>
+        <span>${escapeHtml(error.message)}</span>
+      </div>
+    `;
+  }
+}
+
+loadQueue();
+setInterval(loadQueue, 5000);
