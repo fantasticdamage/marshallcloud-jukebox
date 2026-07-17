@@ -403,28 +403,49 @@ function renderQueue(items) {
     return;
   }
 
-  queueList.innerHTML = items.map((item, index) => `
-    <article class="queue-item ${index === 0 ? "next-track" : ""}">
-      <div class="queue-position">${item.position}</div>
-      <div class="queue-artwork ${item.image ? "" : "queue-artwork-empty"}">
-        ${item.image ? `<img src="${item.image}" alt="">` : "♫"}
-      </div>
-      <div class="queue-copy">
-        <p class="queue-title">
-          ${escapeHtml(item.title)}
-          ${item.explicit ? '<span class="explicit">E</span>' : ""}
-        </p>
-        <p class="queue-meta">
-          ${escapeHtml(item.artist || "Unknown artist")}
-          ${item.duration_ms ? ` · ${formatDuration(item.duration_ms)}` : ""}
-        </p>
-        <p class="queue-wait">${formatWait(item.estimated_wait_seconds)}</p>
-        ${item.requested_by ? `<p class="queue-requester">Requested by ${escapeHtml(item.requested_by)}</p>` : ""}
-      </div>
-      ${index === 0 ? '<span class="next-badge">Up next</span>' : ""}
-    </article>
-  `).join("");
+  queueList.innerHTML = items.map((item, index) => {
+    const position = Number(item.position) || index + 1;
+    const waitLabel = index === 0 ? "Playing next" : formatWaitTime(item.estimated_wait_seconds);
+
+    return `
+      <article class="queue-item ${index === 0 ? "next-track" : ""}" style="--queue-index:${index}">
+        <div class="queue-position" aria-label="Queue position ${position}">${position}</div>
+        <div class="queue-artwork ${item.image ? "" : "queue-artwork-empty"}">
+          ${item.image
+            ? `<img src="${item.image}" alt="${escapeHtml(item.title || "Track")} artwork" loading="lazy">`
+            : '<span aria-hidden="true">♫</span>'}
+        </div>
+        <div class="queue-copy">
+          <div class="queue-title-row">
+            <p class="queue-title">
+              ${escapeHtml(item.title)}
+              ${item.explicit ? '<span class="explicit">E</span>' : ""}
+            </p>
+            ${index === 0 ? '<span class="next-badge">Up next</span>' : ""}
+          </div>
+          <p class="queue-meta">
+            <span>${escapeHtml(item.artist || "Unknown artist")}</span>
+            ${item.album ? `<span class="queue-album"> · ${escapeHtml(item.album)}</span>` : ""}
+          </p>
+          <div class="queue-details">
+            ${item.duration_ms ? `<span class="queue-duration">${formatDuration(item.duration_ms)}</span>` : ""}
+            ${waitLabel ? `<span class="queue-wait">${escapeHtml(waitLabel)}</span>` : ""}
+            ${item.requested_by ? `<span class="queue-requester">Requested by ${escapeHtml(item.requested_by)}</span>` : ""}
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
+
+queueList.addEventListener("error", (event) => {
+  const image = event.target.closest(".queue-artwork img");
+  if (!image) return;
+  const artwork = image.closest(".queue-artwork");
+  if (!artwork) return;
+  artwork.classList.add("queue-artwork-empty", "queue-artwork-error");
+  artwork.innerHTML = '<span aria-hidden="true">♫</span>';
+}, true);
 
 async function loadQueue() {
   try {
