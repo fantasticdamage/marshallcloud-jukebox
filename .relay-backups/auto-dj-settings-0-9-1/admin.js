@@ -15,16 +15,6 @@ const requestStatusPill = document.getElementById("requestStatusPill");
 const playButton = document.querySelector('[data-action="play"]');
 const pauseButton = document.querySelector('[data-action="pause"]');
 const adminArt = document.getElementById("adminArt");
-const autoDjForm = document.getElementById("autoDjForm");
-const autoDjEnabled = document.getElementById("autoDjEnabled");
-const autoDjPlaylist = document.getElementById("autoDjPlaylist");
-const autoDjBackgroundVolume = document.getElementById("autoDjBackgroundVolume");
-const autoDjGuestVolume = document.getElementById("autoDjGuestVolume");
-const autoDjResumeDelay = document.getElementById("autoDjResumeDelay");
-const autoDjFadeIn = document.getElementById("autoDjFadeIn");
-const autoDjFadeOut = document.getElementById("autoDjFadeOut");
-const autoDjSave = document.getElementById("autoDjSave");
-const autoDjStatus = document.getElementById("autoDjStatus");
 
 const playbackState = document.getElementById("adminPlaybackState");
 let volumeTimer;
@@ -49,23 +39,6 @@ function message(text, error = false) {
 function setAuthenticated(ok) {
   loginPanel.classList.toggle("hidden", ok);
   controls.classList.toggle("hidden", !ok);
-}
-
-function renderAutoDj(settings = {}) {
-  if (!autoDjForm) return;
-  autoDjEnabled.checked = Boolean(settings.enabled);
-  autoDjPlaylist.value = settings.playlist || "";
-  autoDjBackgroundVolume.value = Number(settings.background_volume ?? 35);
-  autoDjGuestVolume.value = Number(settings.guest_volume ?? 45);
-  autoDjResumeDelay.value = Number(settings.resume_delay ?? 5);
-  autoDjFadeIn.value = Number(settings.fade_in ?? 5);
-  autoDjFadeOut.value = Number(settings.fade_out ?? 2);
-}
-
-function setAutoDjStatus(text, isError = false) {
-  if (!autoDjStatus) return;
-  autoDjStatus.textContent = text;
-  autoDjStatus.classList.toggle("error", isError);
 }
 
 function updateLock(value) {
@@ -294,43 +267,11 @@ lockButton.addEventListener("click", async () => {
   try {
     const data = await control("lock", { locked: !locked });
     updateLock(data.requestsLocked);
-    renderAutoDj(data.autoDj);
     message(data.requestsLocked ? "Guest requests locked." : "Guest requests opened.");
   } catch (error) {
     message(error.message, true);
   }
 });
-
-if (autoDjForm) {
-  autoDjForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    autoDjSave.disabled = true;
-    autoDjSave.textContent = "Saving…";
-    setAutoDjStatus("");
-
-    try {
-      const data = await control("auto_dj_settings", {
-        auto_dj: {
-          enabled: autoDjEnabled.checked,
-          playlist: autoDjPlaylist.value.trim(),
-          background_volume: Number(autoDjBackgroundVolume.value),
-          guest_volume: Number(autoDjGuestVolume.value),
-          resume_delay: Number(autoDjResumeDelay.value),
-          fade_in: Number(autoDjFadeIn.value),
-          fade_out: Number(autoDjFadeOut.value)
-        }
-      });
-
-      renderAutoDj(data.autoDj);
-      setAutoDjStatus("Saved");
-    } catch (error) {
-      setAutoDjStatus(error.message, true);
-    } finally {
-      autoDjSave.disabled = false;
-      autoDjSave.textContent = "Save Auto DJ";
-    }
-  });
-}
 
 async function refresh() {
   try {

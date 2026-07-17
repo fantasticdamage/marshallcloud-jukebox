@@ -13,10 +13,6 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const HA_URL = (process.env.HA_URL || "").replace(/\/$/, "");
 const HA_TOKEN = process.env.HA_TOKEN || "";
 const HA_MEDIA_PLAYER = process.env.HA_MEDIA_PLAYER || "media_player.connect";
-const HA_PARTY_SCRIPT =
-  process.env.HA_PARTY_SCRIPT || "script.relay_start_party_playlist";
-const HA_FADE_OUT_SCRIPT =
-  process.env.HA_FADE_OUT_SCRIPT || "script.relay_fade_out";
 const TOKEN_FILE = path.join(DATA_DIR, "spotify-token.json");
 const REQUESTS_FILE = path.join(DATA_DIR, "requests.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
@@ -303,79 +299,34 @@ function calculateCurrentRemainingSeconds(state) {
   return Math.max(0, duration - position);
 }
 
-let spotifyEnrichmentBlockedUntil = 0;
-let spotifyEnrichmentLastLogAt = 0;
-
-const SPOTIFY_ENRICHMENT_COOLDOWN_MS = 5 * 60 * 1000;
-const SPOTIFY_ENRICHMENT_LOG_INTERVAL_MS = 60 * 1000;
-
 async function enrichQueueItems(items) {
-  if (Date.now() < spotifyEnrichmentBlockedUntil) {
-    return items;
-  }
-
-  const ids = items.map((item) =>
-    extractSpotifyTrackId(item.content_id)
-  );
-
+  const ids = items.map((item) => extractSpotifyTrackId(item.content_id));
   const uniqueIds = [...new Set(ids.filter(Boolean))];
   let tracksById = new Map();
 
   if (uniqueIds.length) {
     try {
-      const trackIds = uniqueIds.slice(0, 50).join(",");
-
-      const data = await spotifyApi(
-        `/tracks?ids=${encodeURIComponent(trackIds)}`
-      );
-
-      tracksById = new Map(
-        (data?.tracks || [])
-          .filter(Boolean)
-          .map((track) => [track.id, track])
-      );
+      const data = await spotifyApi(`/tracks?ids=${encodeURIComponent(uniqueIds.slice(0, 50).join(","))}`);
+      tracksById = new Map((data?.tracks || []).filter(Boolean).map((track) => [track.id, track]));
     } catch (error) {
-      const message = String(error?.message || "");
-      const isForbidden = /\b403\b|forbidden/i.test(message);
-      const isRateLimited = /\b429\b|too many requests/i.test(message);
-
-      if (isForbidden || isRateLimited) {
-        spotifyEnrichmentBlockedUntil =
-          Date.now() + SPOTIFY_ENRICHMENT_COOLDOWN_MS;
-
-        if (
-          Date.now() - spotifyEnrichmentLastLogAt >=
-          SPOTIFY_ENRICHMENT_LOG_INTERVAL_MS
-        ) {
-          console.warn(
-            `Spotify queue enrichment temporarily disabled: ${message}`
-          );
-
-          spotifyEnrichmentLastLogAt = Date.now();
-        }
-      } else {
-        console.warn("Spotify queue enrichment failed:", message);
-      }
+      console.warn("Spotify queue enrichment failed:", error.message);
     }
   }
 
   return items.map((item, index) => {
     const spotifyId = ids[index];
     const track = tracksById.get(spotifyId);
-
     return {
       ...item,
       spotify_id: spotifyId,
-      image:
-        track?.album?.images?.[1]?.url ||
-        track?.album?.images?.[0]?.url ||
-        "",
+      image: track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url || "",
       duration_ms: Number(track?.duration_ms || 0),
       explicit: Boolean(track?.explicit),
       spotify_url: track?.external_urls?.spotify || ""
     };
   });
 }
+
 
 function relayArtworkUrl(value) {
   if (!value || typeof value !== "string") return "";
@@ -719,45 +670,13 @@ async function handleApi(req, res, url) {
         });
       }
 
-      const existingRequests = readRequests();
-    const requestedSpotifyIds = new Set(
-      existingRequests
-        .map((request) => request.spotify_id)
-        .filter(Boolean)
-    );
-
-    const guestTrackAlreadyQueued = rawItems.some((item) => {
-      const queuedSpotifyId = extractSpotifyTrackId(
-        item.media_content_id || item.content_id || ""
-      );
-
-      return (
-        queuedSpotifyId &&
-        requestedSpotifyIds.has(queuedSpotifyId)
-      );
-    });
-
-    const isPartyModeHandoff =
-      Boolean(readSettings().auto_dj?.enabled) &&
-      !guestTrackAlreadyQueued;
-
-    console.log(
-      `[AutoDJ] Guest request: handoff=${isPartyModeHandoff}, ` +
-      `existingGuestQueue=${guestTrackAlreadyQueued}, ` +
-      `state=${autoDjState}`
-    );
-
-    if (isPartyModeHandoff) {
-      setAutoDjState(AUTO_DJ_STATE.HANDOFF);
-    }
-
-    await homeAssistantRequest("/api/services/media_player/play_media", {
+      await homeAssistantRequest("/api/services/media_player/play_media", {
         method: "POST",
         body: JSON.stringify({
           entity_id: HA_MEDIA_PLAYER,
           media_content_id: body.uri,
           media_content_type: "music",
-          enqueue: isPartyModeHandoff ? "replace" : "add"
+          enqueue: "add"
         })
       });
 
@@ -906,28 +825,6 @@ function broadcast(event, payload = {}) {
 let lastRealtimeQueueHash = "";
 let lastRealtimePlaybackHash = "";
 let realtimeSyncRunning = false;
-let autoDjResumeTimer = null;
-let autoDjStarting = false;
-let autoDjLastStartAt = 0;
-
-let autoDjState = "idle";
-
-const AUTO_DJ_STATE = {
-  IDLE: "idle",
-  COUNTDOWN: "countdown",
-  STARTING: "starting",
-  BACKGROUND: "background",
-  HANDOFF: "handoff"
-};
-const AUTO_DJ_START_COOLDOWN_MS = 15000;
-
-function setAutoDjState(nextState) {
-  if (autoDjState === nextState) return;
-
-  console.log(`[AutoDJ] ${autoDjState} -> ${nextState}`);
-
-  autoDjState = nextState;
-}
 
 async function fetchRelaySnapshot(pathname) {
   const response = await fetch(`http://127.0.0.1:${PORT}${pathname}`, {
@@ -967,141 +864,6 @@ async function broadcastPlaybackSnapshot(force = false) {
   }
 }
 
-
-async function getAutoDjQueueItems() {
-  const queueResponse = await homeAssistantRequest(
-    "/api/services/sonos/get_queue?return_response",
-    {
-      method: "POST",
-      body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER })
-    }
-  );
-
-  const rawItems =
-    queueResponse?.service_response?.[HA_MEDIA_PLAYER] ||
-    queueResponse?.[HA_MEDIA_PLAYER] ||
-    [];
-
-  return Array.isArray(rawItems) ? rawItems : [];
-}
-
-function cancelAutoDjResume(reason = "") {
-  if (!autoDjResumeTimer) return;
-
-  clearTimeout(autoDjResumeTimer);
-  autoDjResumeTimer = null;
-
-  if (reason) {
-    console.log(`Auto DJ resume cancelled: ${reason}`);
-  }
-}
-
-async function startAutoDjBackground() {
-  setAutoDjState(AUTO_DJ_STATE.STARTING);
-  if (autoDjStarting) return;
-
-  const now = Date.now();
-  if (now - autoDjLastStartAt < AUTO_DJ_START_COOLDOWN_MS) return;
-
-  autoDjStarting = true;
-
-  try {
-    const settings = readSettings();
-    if (!settings.auto_dj?.enabled) return;
-
-    const [state, queueItems] = await Promise.all([
-      getMediaPlayerState(),
-      getAutoDjQueueItems()
-    ]);
-
-    const playerState = String(state?.state || "").toLowerCase();
-
-    if (queueItems.length > 0) {
-      console.log("Auto DJ start skipped: guest queue is no longer empty.");
-      return;
-    }
-
-    if (playerState !== "idle") {
-      console.log(`Auto DJ start skipped: Sonos state is ${playerState || "unknown"}.`);
-      return;
-    }
-
-    console.log(`Auto DJ starting background playlist via ${HA_PARTY_SCRIPT}.`);
-
-    await homeAssistantRequest("/api/services/script/turn_on", {
-      method: "POST",
-      body: JSON.stringify({ entity_id: HA_PARTY_SCRIPT })
-    });
-
-    autoDjLastStartAt = Date.now();
-    
-    setAutoDjState(AUTO_DJ_STATE.BACKGROUND);
-
-    const delayed = setTimeout(() => {
-      broadcastPlaybackSnapshot(true);
-      broadcastQueueSnapshot(true);
-    }, 1500);
-    delayed.unref?.();
-  } catch (error) {
-    console.error("Auto DJ background start failed:", error.message);
-  
-} finally {
-  autoDjStarting = false;
-
-  if (autoDjState === AUTO_DJ_STATE.STARTING) {
-    setAutoDjState(AUTO_DJ_STATE.IDLE);
-    }
-  }
-}
-async function evaluateAutoDjEngine() {
- 
-  const settings = readSettings();
-  const autoDj = settings.auto_dj || {};
-
-  if (!autoDj.enabled) {
-    cancelAutoDjResume("Auto DJ disabled");
-    return;
-  }
-
-  try {
-    const [state, queueItems] = await Promise.all([
-      getMediaPlayerState(),
-      getAutoDjQueueItems()
-    ]);
-
-    const playerState = String(state?.state || "").toLowerCase();
-    
-    if (autoDjState === AUTO_DJ_STATE.BACKGROUND) {
-    return;
-    }
-
-    if (queueItems.length > 0) {
-      cancelAutoDjResume("guest queue contains tracks");
-      return;
-    }
-
-    if (playerState !== "idle") {
-      cancelAutoDjResume(`Sonos state is ${playerState || "unknown"}`);
-      return;
-    }
-
-    if (autoDjResumeTimer || autoDjStarting) return;
-
-    const delaySeconds = Math.max(0, Number(autoDj.resume_delay) || 0);
-    console.log(`Auto DJ will start background music in ${delaySeconds} second(s).`);
-
-    autoDjResumeTimer = setTimeout(async () => {
-      autoDjResumeTimer = null;
-      await startAutoDjBackground();
-    }, delaySeconds * 1000);
-
-    autoDjResumeTimer.unref?.();
-  } catch (error) {
-    cancelAutoDjResume();
-    console.warn("Auto DJ evaluation failed:", error.message);
-  }
-}
-
 async function syncRealtimeSnapshots() {
   if (realtimeSyncRunning) return;
   realtimeSyncRunning = true;
@@ -1110,8 +872,6 @@ async function syncRealtimeSnapshots() {
       broadcastQueueSnapshot(),
       broadcastPlaybackSnapshot()
     ]);
-
-    await evaluateAutoDjEngine();
   } finally {
     realtimeSyncRunning = false;
   }
