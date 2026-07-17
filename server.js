@@ -303,34 +303,79 @@ function calculateCurrentRemainingSeconds(state) {
   return Math.max(0, duration - position);
 }
 
+let spotifyEnrichmentBlockedUntil = 0;
+let spotifyEnrichmentLastLogAt = 0;
+
+const SPOTIFY_ENRICHMENT_COOLDOWN_MS = 5 * 60 * 1000;
+const SPOTIFY_ENRICHMENT_LOG_INTERVAL_MS = 60 * 1000;
+
 async function enrichQueueItems(items) {
-  const ids = items.map((item) => extractSpotifyTrackId(item.content_id));
+  if (Date.now() < spotifyEnrichmentBlockedUntil) {
+    return items;
+  }
+
+  const ids = items.map((item) =>
+    extractSpotifyTrackId(item.content_id)
+  );
+
   const uniqueIds = [...new Set(ids.filter(Boolean))];
   let tracksById = new Map();
 
   if (uniqueIds.length) {
     try {
-      const data = await spotifyApi(`/tracks?ids=${encodeURIComponent(uniqueIds.slice(0, 50).join(","))}`);
-      tracksById = new Map((data?.tracks || []).filter(Boolean).map((track) => [track.id, track]));
+      const trackIds = uniqueIds.slice(0, 50).join(",");
+
+      const data = await spotifyApi(
+        `/tracks?ids=${encodeURIComponent(trackIds)}`
+      );
+
+      tracksById = new Map(
+        (data?.tracks || [])
+          .filter(Boolean)
+          .map((track) => [track.id, track])
+      );
     } catch (error) {
-      console.warn("Spotify queue enrichment failed:", error.message);
+      const message = String(error?.message || "");
+      const isForbidden = /\b403\b|forbidden/i.test(message);
+      const isRateLimited = /\b429\b|too many requests/i.test(message);
+
+      if (isForbidden || isRateLimited) {
+        spotifyEnrichmentBlockedUntil =
+          Date.now() + SPOTIFY_ENRICHMENT_COOLDOWN_MS;
+
+        if (
+          Date.now() - spotifyEnrichmentLastLogAt >=
+          SPOTIFY_ENRICHMENT_LOG_INTERVAL_MS
+        ) {
+          console.warn(
+            `Spotify queue enrichment temporarily disabled: ${message}`
+          );
+
+          spotifyEnrichmentLastLogAt = Date.now();
+        }
+      } else {
+        console.warn("Spotify queue enrichment failed:", message);
+      }
     }
   }
 
   return items.map((item, index) => {
     const spotifyId = ids[index];
     const track = tracksById.get(spotifyId);
+
     return {
       ...item,
       spotify_id: spotifyId,
-      image: track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url || "",
+      image:
+        track?.album?.images?.[1]?.url ||
+        track?.album?.images?.[0]?.url ||
+        "",
       duration_ms: Number(track?.duration_ms || 0),
       explicit: Boolean(track?.explicit),
       spotify_url: track?.external_urls?.spotify || ""
     };
   });
 }
-
 
 function relayArtworkUrl(value) {
   if (!value || typeof value !== "string") return "";
