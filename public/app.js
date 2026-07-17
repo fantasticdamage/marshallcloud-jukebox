@@ -54,6 +54,30 @@ let searchOffset = 0;
 let lastSearchQuery = "";
 let lastSearchMode = "all";
 
+
+function formatWaitTime(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds) || 0);
+
+  if (seconds < 60) {
+    return "Less than 1 min";
+  }
+
+  const totalMinutes = Math.ceil(seconds / 60);
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (minutes === 0) {
+    return `${hours} hr`;
+  }
+
+  return `${hours} hr ${minutes} min`;
+}
+
 function formatDuration(ms) {
   const total = Math.floor(ms / 1000);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
