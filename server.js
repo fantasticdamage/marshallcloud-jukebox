@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { WebSocketServer, WebSocket } = require("ws");
+const { createQueueEngine } = require("./queue-engine");
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_URL = (process.env.PUBLIC_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
@@ -10,6 +11,7 @@ const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || "";
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || `${PUBLIC_URL}/auth/callback`;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const queueEngine = createQueueEngine();
 const HA_URL = (process.env.HA_URL || "").replace(/\/$/, "");
 const HA_TOKEN = process.env.HA_TOKEN || "";
 const HA_MEDIA_PLAYER = process.env.HA_MEDIA_PLAYER || "media_player.connect";
@@ -737,27 +739,18 @@ async function handleApi(req, res, url) {
       );
     });
 
-    const isPartyModeHandoff =
-      Boolean(readSettings().auto_dj?.enabled) &&
-      !guestTrackAlreadyQueued;
+const queueDecision = queueEngine.handleGuestRequest();
 
-    console.log(
-      `[AutoDJ] Guest request: handoff=${isPartyModeHandoff}, ` +
-      `existingGuestQueue=${guestTrackAlreadyQueued}, ` +
-      `state=${autoDjState}`
-    );
-
-    if (isPartyModeHandoff) {
-      setAutoDjState(AUTO_DJ_STATE.HANDOFF);
-    }
-
+if (queueDecision.firstGuestRequest) {
+  setAutoDjState(AUTO_DJ_STATE.HANDOFF);
+}
     await homeAssistantRequest("/api/services/media_player/play_media", {
         method: "POST",
         body: JSON.stringify({
           entity_id: HA_MEDIA_PLAYER,
           media_content_id: body.uri,
           media_content_type: "music",
-          enqueue: isPartyModeHandoff ? "replace" : "add"
+          enqueue: queueDecision.enqueue
         })
       });
 
