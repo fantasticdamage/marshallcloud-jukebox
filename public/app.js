@@ -71,6 +71,14 @@ function escapeHtml(value) {
   })[char]);
 }
 
+function refreshVisibleSearchAvailability() {
+  const query = searchInput?.value?.trim() || "";
+  if (query.length < 2) return;
+
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(() => performSearch(searchOffset), 120);
+}
+
 function renderTracks(tracks) {
   results.innerHTML = "";
 
@@ -122,6 +130,19 @@ function renderTracks(tracks) {
     `;
 
     const addButton = item.querySelector(".add-button");
+    const addLabel = addButton.querySelector(".add-button-label");
+    const availability = track.availability || "available";
+
+    if (availability === "playing") {
+      addButton.disabled = true;
+      addButton.classList.add("is-playing");
+      if (addLabel) addLabel.textContent = "Playing";
+    } else if (availability === "queued") {
+      addButton.disabled = true;
+      addButton.classList.add("is-queued");
+      if (addLabel) addLabel.textContent = "Queued";
+    }
+
 
     addButton.addEventListener("click", async () => {
       if (addButton.disabled) return;
@@ -555,6 +576,7 @@ function connectRelayWebSocket() {
 
       if (data.event === "queue_updated") {
         console.info("Relay queue snapshot received", data.payload);
+        refreshVisibleSearchAvailability();
         if (Array.isArray(data.payload?.items)) {
           renderQueue(data.payload.items);
         } else {
@@ -564,6 +586,7 @@ function connectRelayWebSocket() {
 
       if (data.event === "now_playing_updated") {
         console.info("Relay playback snapshot received", data.payload);
+        refreshVisibleSearchAvailability();
         if (typeof renderNowPlaying === "function") {
           renderNowPlaying(data.payload);
         } else if (typeof updateNowPlaying === "function") {

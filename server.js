@@ -312,6 +312,34 @@ function relayArtworkUrl(value) {
   return value;
 }
 
+
+async function getTrackAvailabilitySnapshot() {
+  const state = await getMediaPlayerState();
+  const attributes = state?.attributes || {};
+  const playingId = extractSpotifyTrackId(attributes.media_content_id || "");
+
+  const queueResponse = await homeAssistantRequest(
+    "/api/services/sonos/get_queue?return_response",
+    {
+      method: "POST",
+      body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER })
+    }
+  );
+
+  const rawItems =
+    queueResponse?.service_response?.[HA_MEDIA_PLAYER] ||
+    queueResponse?.[HA_MEDIA_PLAYER] ||
+    [];
+
+  const queuedIds = new Set(
+    (Array.isArray(rawItems) ? rawItems : [])
+      .map((item) => extractSpotifyTrackId(item.media_content_id || ""))
+      .filter(Boolean)
+  );
+
+  return { playingId, queuedIds };
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === "/api/health") {
     return sendJson(res, 200, {
@@ -446,7 +474,19 @@ async function handleApi(req, res, url) {
           external_url: track.external_urls?.spotify || ""
         }));
 
-      const total = Number(firstPage.tracks?.total || 0);
+      const availabilitySnapshot = await getTrackAvailabilitySnapshot();
+
+    for (const track of tracks) {
+      if (track.id && track.id === availabilitySnapshot.playingId) {
+        track.availability = "playing";
+      } else if (track.id && availabilitySnapshot.queuedIds.has(track.id)) {
+        track.availability = "queued";
+      } else {
+        track.availability = "available";
+      }
+    }
+
+    const total = Number(firstPage.tracks?.total || 0);
       const nextOffset = offset + 15;
 
       return sendJson(res, 200, {
@@ -553,6 +593,19 @@ async function handleApi(req, res, url) {
       }
 
       const spotifyId = extractSpotifyTrackId(body.uri);
+    const currentState = await getMediaPlayerState();
+    const currentSpotifyId = extractSpotifyTrackId(
+      currentState?.attributes?.media_content_id || ""
+    );
+
+    if (currentSpotifyId && currentSpotifyId === spotifyId) {
+      return sendJson(res, 409, {
+        error: "This song is already playing.",
+        duplicate: true,
+        status: "playing"
+      });
+    }
+
       const guestName = normalizeGuestName(body.guest_name);
       const queueResponse = await homeAssistantRequest(
         "/api/services/sonos/get_queue?return_response",

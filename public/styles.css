@@ -545,3 +545,23 @@ button,input{font:inherit}.app-shell{width:min(980px,100%);margin:0 auto;padding
     white-space: normal;
   }
 }
+
+
+/* Relay Queue Intelligence v0.9.0 */
+.add-button.is-playing,
+.add-button.is-queued {
+  cursor: default;
+  transform: none;
+}
+
+.add-button.is-playing {
+  border-color: rgba(96, 165, 250, 0.42);
+  background: rgba(96, 165, 250, 0.12);
+  color: #bfdbfe;
+}
+
+.add-button.is-queued {
+  border-color: rgba(139, 92, 246, 0.42);
+  background: rgba(139, 92, 246, 0.12);
+  color: #ddd6fe;
+}
