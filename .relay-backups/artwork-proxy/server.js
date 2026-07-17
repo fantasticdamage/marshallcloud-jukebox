@@ -1,0 +1,841 @@
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const { WebSocketServer, WebSocket } = require("ws");
+
+const PORT = Number(process.env.PORT || 3000);
+const PUBLIC_URL = (process.env.PUBLIC_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || "";
+const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || "";
+const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || `${PUBLIC_URL}/auth/callback`;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const HA_URL = (process.env.HA_URL || "").replace(/\/$/, "");
+const HA_TOKEN = process.env.HA_TOKEN || "";
+const HA_MEDIA_PLAYER = process.env.HA_MEDIA_PLAYER || "media_player.connect";
+const TOKEN_FILE = path.join(DATA_DIR, "spotify-token.json");
+const REQUESTS_FILE = path.join(DATA_DIR, "requests.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+const ADMIN_PIN = process.env.ADMIN_PIN || "";
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+const publicDir = path.join(__dirname, "public");
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const mimeTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg"
+};
+
+const oauthStates = new Map();
+
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  res.end(JSON.stringify(payload));
+}
+
+function redirect(res, location) {
+  res.writeHead(302, { Location: location, "Cache-Control": "no-store" });
+  res.end();
+}
+
+function readToken() {
+  try {
+    return JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeToken(token) {
+  fs.writeFileSync(TOKEN_FILE, JSON.stringify(token, null, 2), { mode: 0o600 });
+}
+
+function spotifyConfigured() {
+  return Boolean(CLIENT_ID && CLIENT_SECRET && REDIRECT_URI);
+}
+
+function readRequests() {
+  try {
+    const value = JSON.parse(fs.readFileSync(REQUESTS_FILE, "utf8"));
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRequests(requests) {
+  fs.writeFileSync(REQUESTS_FILE, JSON.stringify(requests.slice(-500), null, 2), { mode: 0o600 });
+}
+
+function readSettings() {
+  try {
+    const value = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8"));
+    return { requests_locked: Boolean(value.requests_locked) };
+  } catch {
+    return { requests_locked: false };
+  }
+}
+
+function writeSettings(settings) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
+
+function parseCookies(req) {
+  const cookies = {};
+  const header = req.headers.cookie || "";
+  for (const part of header.split(";")) {
+    const index = part.indexOf("=");
+    if (index < 0) continue;
+    cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+  }
+  return cookies;
+}
+
+function signSession(value) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update(value).digest("hex");
+}
+
+function createAdminSession() {
+  const expires = Date.now() + 12 * 60 * 60 * 1000;
+  const value = String(expires);
+  return `${value}.${signSession(value)}`;
+}
+
+function isAdmin(req) {
+  const token = parseCookies(req).jukebox_admin || "";
+  const [value, signature] = token.split(".");
+  if (!value || !signature || Number(value) < Date.now()) return false;
+  const expected = signSession(value);
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
+function setAdminCookie(res, token) {
+  res.setHeader("Set-Cookie", `jukebox_admin=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=43200`);
+}
+
+
+function normalizeGuestName(value) {
+  if (typeof value !== "string") return "Guest";
+  const cleaned = value.trim().replace(/\s+/g, " ").slice(0, 30);
+  return cleaned || "Guest";
+}
+
+function latestRequestsBySpotifyId() {
+  const map = new Map();
+  for (const request of readRequests()) {
+    if (request.spotify_id) map.set(request.spotify_id, request);
+  }
+  return map;
+}
+
+async function spotifyTokenRequest(params) {
+  const response = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams(params)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error_description || data.error || `Spotify token error ${response.status}`);
+  }
+  return data;
+}
+
+async function getAccessToken() {
+  let token = readToken();
+  if (!token) return null;
+
+  if (Date.now() < (token.expires_at || 0) - 60000) {
+    return token.access_token;
+  }
+
+  if (!token.refresh_token) return null;
+
+  const refreshed = await spotifyTokenRequest({
+    grant_type: "refresh_token",
+    refresh_token: token.refresh_token
+  });
+
+  token = {
+    ...token,
+    ...refreshed,
+    refresh_token: refreshed.refresh_token || token.refresh_token,
+    expires_at: Date.now() + refreshed.expires_in * 1000
+  };
+  writeToken(token);
+  return token.access_token;
+}
+
+async function spotifyApi(endpoint) {
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    const error = new Error("Spotify is not connected");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const response = await fetch(`https://api.spotify.com/v1${endpoint}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (response.status === 204) return null;
+
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data?.error?.message || `Spotify API error ${response.status}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+  return data;
+}
+
+
+async function readJsonBody(req) {
+  const chunks = []; let total = 0;
+  for await (const chunk of req) { total += chunk.length; if (total > 100000) { const e = new Error("Request body is too large"); e.statusCode = 413; throw e; } chunks.push(chunk); }
+  if (!chunks.length) return {};
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  catch { const e = new Error("Invalid JSON body"); e.statusCode = 400; throw e; }
+}
+function homeAssistantConfigured() { return Boolean(HA_URL && HA_TOKEN && HA_MEDIA_PLAYER); }
+async function homeAssistantRequest(endpoint, options = {}) {
+  if (!homeAssistantConfigured()) { const e = new Error("Home Assistant is not configured"); e.statusCode = 503; throw e; }
+  const response = await fetch(`${HA_URL}${endpoint}`, { ...options, headers: { Authorization: `Bearer ${HA_TOKEN}`, "Content-Type": "application/json", ...(options.headers || {}) } });
+  const text = await response.text(); let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = text; } }
+  if (!response.ok) { const e = new Error(data?.message || data?.error?.message || `Home Assistant request failed (${response.status})`); e.statusCode = response.status; throw e; }
+  return data;
+}
+function validateSpotifyTrackUri(value) { return typeof value === "string" && /^spotify:track:[A-Za-z0-9]+$/.test(value); }
+
+
+function extractSpotifyTrackId(contentId) {
+  if (typeof contentId !== "string") return "";
+  let decoded = contentId;
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  const match = decoded.match(/spotify:track:([A-Za-z0-9]+)/);
+  return match ? match[1] : "";
+}
+
+async function getMediaPlayerState() {
+  return homeAssistantRequest(`/api/states/${encodeURIComponent(HA_MEDIA_PLAYER)}`);
+}
+
+function calculateCurrentRemainingSeconds(state) {
+  const attributes = state?.attributes || {};
+  const duration = Number(attributes.media_duration || 0);
+  let position = Number(attributes.media_position || 0);
+  if (state?.state === "playing" && attributes.media_position_updated_at) {
+    const updated = Date.parse(attributes.media_position_updated_at);
+    if (Number.isFinite(updated)) {
+      position += Math.max(0, (Date.now() - updated) / 1000);
+    }
+  }
+  return Math.max(0, duration - position);
+}
+
+async function enrichQueueItems(items) {
+  const ids = items.map((item) => extractSpotifyTrackId(item.content_id));
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  let tracksById = new Map();
+
+  if (uniqueIds.length) {
+    try {
+      const data = await spotifyApi(`/tracks?ids=${encodeURIComponent(uniqueIds.slice(0, 50).join(","))}`);
+      tracksById = new Map((data?.tracks || []).filter(Boolean).map((track) => [track.id, track]));
+    } catch (error) {
+      console.warn("Spotify queue enrichment failed:", error.message);
+    }
+  }
+
+  return items.map((item, index) => {
+    const spotifyId = ids[index];
+    const track = tracksById.get(spotifyId);
+    return {
+      ...item,
+      spotify_id: spotifyId,
+      image: track?.album?.images?.[1]?.url || track?.album?.images?.[0]?.url || "",
+      duration_ms: Number(track?.duration_ms || 0),
+      explicit: Boolean(track?.explicit),
+      spotify_url: track?.external_urls?.spotify || ""
+    };
+  });
+}
+
+async function handleApi(req, res, url) {
+  if (url.pathname === "/api/health") {
+    return sendJson(res, 200, {
+      status: "ok",
+      app: "Relay",
+      version: "0.7.5",
+      spotifyConfigured: spotifyConfigured(),
+      spotifyConnected: Boolean(readToken()),
+      homeAssistantConfigured: homeAssistantConfigured()
+    });
+  }
+
+  if (url.pathname === "/api/status") {
+    let profile = null;
+    if (readToken()) {
+      try {
+        profile = await spotifyApi("/me");
+      } catch {
+        profile = null;
+      }
+    }
+
+    return sendJson(res, 200, {
+      spotifyConfigured: spotifyConfigured(),
+      spotifyConnected: Boolean(profile),
+      spotifyUser: profile ? {
+        id: profile.id,
+        display_name: profile.display_name
+      } : null,
+      requestsLocked: readSettings().requests_locked
+    });
+  }
+
+  if (url.pathname === "/api/search") {
+    const query = (url.searchParams.get("q") || "").trim();
+    const mode = url.searchParams.get("mode") === "album" ? "album" : "track";
+    const requestedOffset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
+    const offset = Number.isFinite(requestedOffset)
+      ? Math.max(0, Math.min(requestedOffset, 1000))
+      : 0;
+
+    if (query.length < 2) {
+      return sendJson(res, 400, { error: "Enter at least two characters." });
+    }
+
+    try {
+      const spotifyQuery = mode === "album" ? `album:${query}` : query;
+
+      async function searchPage(limit, pageOffset) {
+        return spotifyApi(`/search?${new URLSearchParams({
+          q: spotifyQuery,
+          type: "track",
+          limit: String(limit),
+          offset: String(pageOffset)
+        })}`);
+      }
+
+      const [firstPage, secondPage] = await Promise.all([
+        searchPage(10, offset),
+        searchPage(5, offset + 10)
+      ]);
+
+      const combined = [
+        ...(firstPage.tracks?.items || []),
+        ...(secondPage.tracks?.items || [])
+      ];
+
+      const seen = new Set();
+      const tracks = combined
+        .filter((track) => {
+          if (!track?.id || seen.has(track.id)) return false;
+          seen.add(track.id);
+          return true;
+        })
+        .slice(0, 15)
+        .map((track) => ({
+          id: track.id,
+          uri: track.uri,
+          name: track.name,
+          artists: track.artists.map((artist) => artist.name).join(", "),
+          album: track.album.name,
+          image: track.album.images?.[1]?.url || track.album.images?.[0]?.url || "",
+          duration_ms: track.duration_ms,
+          explicit: track.explicit,
+          external_url: track.external_urls?.spotify || ""
+        }));
+
+      const total = Number(firstPage.tracks?.total || 0);
+      const nextOffset = offset + 15;
+
+      return sendJson(res, 200, {
+        tracks,
+        mode,
+        offset,
+        next_offset: nextOffset,
+        has_more: nextOffset < total && tracks.length > 0,
+        total
+      });
+    } catch (error) {
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
+
+
+
+  if (url.pathname === "/api/now-playing" && req.method === "GET") {
+    try {
+      const state = await getMediaPlayerState();
+      const a = state?.attributes || {};
+      let position = Number(a.media_position || 0);
+      if (state?.state === "playing" && a.media_position_updated_at) {
+        const updated = Date.parse(a.media_position_updated_at);
+        if (Number.isFinite(updated)) position += Math.max(0, (Date.now() - updated) / 1000);
+      }
+      return sendJson(res, 200, {
+        state: state?.state || "unknown",
+        title: a.media_title || "Nothing playing",
+        artist: a.media_artist || "",
+        album: a.media_album_name || "",
+        artwork: a.entity_picture || "",
+        position: Math.max(0, position),
+        duration: Number(a.media_duration || 0),
+        volume: Number(a.volume_level || 0)
+      });
+    } catch (error) {
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
+
+  if (url.pathname === "/api/queue" && req.method === "GET") {
+    try {
+      const [response, playerState] = await Promise.all([
+        homeAssistantRequest("/api/services/sonos/get_queue?return_response", {
+          method: "POST",
+          body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER })
+        }),
+        getMediaPlayerState()
+      ]);
+
+      const rawItems =
+        response?.service_response?.[HA_MEDIA_PLAYER] ||
+        response?.[HA_MEDIA_PLAYER] ||
+        [];
+
+      const normalized = Array.isArray(rawItems)
+        ? rawItems.map((item, index) => ({
+            queue_position: index + 1,
+            title: item.media_title || "Unknown title",
+            artist: item.media_artist || "",
+            album: item.media_album_name || "",
+            content_id: item.media_content_id || ""
+          }))
+        : [];
+
+      const enriched = await enrichQueueItems(normalized);
+      const currentPosition = Math.max(1, Number(playerState?.attributes?.queue_position || 1));
+      const upcoming = enriched.slice(currentPosition);
+      let waitSeconds = calculateCurrentRemainingSeconds(playerState);
+
+      const requestsById = latestRequestsBySpotifyId();
+      const items = upcoming.map((item, index) => {
+        const request = requestsById.get(item.spotify_id);
+        const result = {
+          ...item,
+          position: index + 1,
+          estimated_wait_seconds: Math.round(waitSeconds),
+          requested_by: request?.guest_name || ""
+        };
+        waitSeconds += item.duration_ms / 1000;
+        return result;
+      });
+
+      return sendJson(res, 200, {
+        items,
+        current_queue_position: currentPosition,
+        total_queue_size: enriched.length
+      });
+    } catch (error) {
+      console.error("Queue read failed:", error.message);
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
+
+  if (url.pathname === "/api/queue" && req.method === "POST") {
+    try {
+      if (readSettings().requests_locked) {
+        return sendJson(res, 423, { error: "Song requests are currently locked by the host." });
+      }
+      const body = await readJsonBody(req);
+      if (!validateSpotifyTrackUri(body.uri)) {
+        return sendJson(res, 400, { error: "A valid Spotify track URI is required." });
+      }
+
+      const spotifyId = extractSpotifyTrackId(body.uri);
+      const guestName = normalizeGuestName(body.guest_name);
+      const queueResponse = await homeAssistantRequest(
+        "/api/services/sonos/get_queue?return_response",
+        {
+          method: "POST",
+          body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER })
+        }
+      );
+      const rawItems =
+        queueResponse?.service_response?.[HA_MEDIA_PLAYER] ||
+        queueResponse?.[HA_MEDIA_PLAYER] ||
+        [];
+      const duplicateIndex = Array.isArray(rawItems)
+        ? rawItems.findIndex((item) => extractSpotifyTrackId(item.media_content_id || "") === spotifyId)
+        : -1;
+
+      if (duplicateIndex >= 0) {
+        return sendJson(res, 409, {
+          error: "That song is already in the Sonos queue.",
+          duplicate: true,
+          queue_position: duplicateIndex + 1
+        });
+      }
+
+      await homeAssistantRequest("/api/services/media_player/play_media", {
+        method: "POST",
+        body: JSON.stringify({
+          entity_id: HA_MEDIA_PLAYER,
+          media_content_id: body.uri,
+          media_content_type: "music",
+          enqueue: "add"
+        })
+      });
+
+      const requests = readRequests();
+      requests.push({
+        spotify_id: spotifyId,
+        uri: body.uri,
+        guest_name: guestName,
+        requested_at: new Date().toISOString()
+      });
+      writeRequests(requests);
+
+      notifyQueueUpdated({
+        entity_id: HA_MEDIA_PLAYER,
+        uri: body.uri
+      });
+
+      return sendJson(res, 200, {
+        status: "queued",
+        entity_id: HA_MEDIA_PLAYER,
+        uri: body.uri,
+        guest_name: guestName
+      });
+    } catch (error) {
+      console.error("Queue request failed:", error.message);
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
+
+
+  if (url.pathname === "/api/admin/status" && req.method === "GET") {
+    return sendJson(res, 200, {
+      authenticated: isAdmin(req),
+      configured: Boolean(ADMIN_PIN),
+      requestsLocked: readSettings().requests_locked
+    });
+  }
+
+  if (url.pathname === "/api/admin/login" && req.method === "POST") {
+    if (!ADMIN_PIN) return sendJson(res, 503, { error: "ADMIN_PIN is not configured." });
+    const body = await readJsonBody(req);
+    const supplied = String(body.pin || "");
+    const valid = supplied.length === ADMIN_PIN.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(ADMIN_PIN));
+    if (!valid) return sendJson(res, 401, { error: "Incorrect PIN." });
+    setAdminCookie(res, createAdminSession());
+    return sendJson(res, 200, { authenticated: true });
+  }
+
+  if (url.pathname === "/api/admin/queue/remove" && req.method === "POST") {
+    if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin authentication required." });
+    try {
+      const body = await readJsonBody(req);
+      const queuePosition = Number(body.queue_position);
+      if (!Number.isInteger(queuePosition) || queuePosition < 1) {
+        return sendJson(res, 400, { error: "A valid Sonos queue position is required." });
+      }
+
+      await homeAssistantRequest("/api/services/sonos/remove_from_queue", {
+        method: "POST",
+        body: JSON.stringify({
+          entity_id: HA_MEDIA_PLAYER,
+          queue_position: queuePosition
+        })
+      });
+
+      if (typeof body.spotify_id === "string" && body.spotify_id) {
+        writeRequests(readRequests().filter((request) => request.spotify_id !== body.spotify_id));
+      }
+
+      notifyQueueUpdated({
+        entity_id: HA_MEDIA_PLAYER,
+        queue_position: queuePosition,
+        removed: true
+      });
+
+      return sendJson(res, 200, { ok: true, queue_position: queuePosition });
+    } catch (error) {
+      console.error("Queue removal failed:", error.message);
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
+
+  if (url.pathname === "/api/admin/control" && req.method === "POST") {
+    if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin authentication required." });
+    try {
+      const body = await readJsonBody(req);
+      const action = String(body.action || "");
+      if (action === "play") {
+        await homeAssistantRequest("/api/services/media_player/media_play", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER }) });
+      } else if (action === "pause") {
+        await homeAssistantRequest("/api/services/media_player/media_pause", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER }) });
+      } else if (action === "next") {
+        await homeAssistantRequest("/api/services/media_player/media_next_track", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER }) });
+      } else if (action === "volume") {
+        const volume = Math.min(1, Math.max(0, Number(body.volume)));
+        if (!Number.isFinite(volume)) return sendJson(res, 400, { error: "Invalid volume." });
+        await homeAssistantRequest("/api/services/media_player/volume_set", { method: "POST", body: JSON.stringify({ entity_id: HA_MEDIA_PLAYER, volume_level: volume }) });
+      } else if (action === "lock") {
+        const settings = readSettings();
+        settings.requests_locked = Boolean(body.locked);
+        writeSettings(settings);
+        return sendJson(res, 200, { ok: true, requestsLocked: settings.requests_locked });
+      } else {
+        return sendJson(res, 400, { error: "Unknown admin action." });
+      }
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
+      return sendJson(res, error.statusCode || 500, { error: error.message });
+    }
+  }
+
+  return false;
+}
+
+
+const websocketClients = new Set();
+
+function broadcast(event, payload = {}) {
+  const message = JSON.stringify({ event, payload, sent_at: new Date().toISOString() });
+  for (const client of websocketClients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  }
+}
+
+let lastRealtimeQueueHash = "";
+let lastRealtimePlaybackHash = "";
+let realtimeSyncRunning = false;
+
+async function fetchRelaySnapshot(pathname) {
+  const response = await fetch(`http://127.0.0.1:${PORT}${pathname}`, {
+    headers: { Accept: "application/json" }
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error || `Snapshot request failed (${response.status})`);
+  }
+  return payload;
+}
+
+async function broadcastQueueSnapshot(force = false) {
+  try {
+    const payload = await fetchRelaySnapshot("/api/queue");
+    const hash = JSON.stringify(payload);
+    if (force || hash !== lastRealtimeQueueHash) {
+      lastRealtimeQueueHash = hash;
+      broadcast("queue_updated", payload);
+    }
+  } catch (error) {
+    console.warn("Relay queue snapshot failed:", error.message);
+  }
+}
+
+async function broadcastPlaybackSnapshot(force = false) {
+  try {
+    const payload = await fetchRelaySnapshot("/api/now-playing");
+    const hash = JSON.stringify(payload);
+    if (force || hash !== lastRealtimePlaybackHash) {
+      lastRealtimePlaybackHash = hash;
+      broadcast("now_playing_updated", payload);
+    }
+  } catch (error) {
+    console.warn("Relay playback snapshot failed:", error.message);
+  }
+}
+
+async function syncRealtimeSnapshots() {
+  if (realtimeSyncRunning) return;
+  realtimeSyncRunning = true;
+  try {
+    await Promise.all([
+      broadcastQueueSnapshot(),
+      broadcastPlaybackSnapshot()
+    ]);
+  } finally {
+    realtimeSyncRunning = false;
+  }
+}
+
+function notifyQueueUpdated(payload = {}) {
+  broadcastQueueSnapshot(true);
+  const delayed = setTimeout(() => broadcastQueueSnapshot(true), 1200);
+  delayed.unref();
+}
+
+function websocketStatus() {
+  return { connected_clients: websocketClients.size };
+}
+
+async function handleRequest(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname === "/auth/login") {
+    if (!spotifyConfigured()) {
+      return sendJson(res, 503, { error: "Spotify environment variables are not configured." });
+    }
+
+    const state = crypto.randomBytes(24).toString("hex");
+    oauthStates.set(state, Date.now());
+    setTimeout(() => oauthStates.delete(state), 10 * 60 * 1000).unref();
+
+    const authorizeUrl = new URL("https://accounts.spotify.com/authorize");
+    authorizeUrl.search = new URLSearchParams({
+      response_type: "code",
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      state,
+      scope: [
+        "user-read-private",
+        "user-read-email",
+        "user-read-playback-state",
+        "user-modify-playback-state",
+        "user-read-currently-playing"
+      ].join(" ")
+    }).toString();
+
+    return redirect(res, authorizeUrl.toString());
+  }
+
+  if (url.pathname === "/auth/callback") {
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const error = url.searchParams.get("error");
+
+    if (error) {
+      return redirect(res, `${PUBLIC_URL}/?spotify_error=${encodeURIComponent(error)}`);
+    }
+    if (!code || !state || !oauthStates.has(state)) {
+      return redirect(res, `${PUBLIC_URL}/?spotify_error=invalid_state`);
+    }
+
+    oauthStates.delete(state);
+
+    try {
+      const token = await spotifyTokenRequest({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: REDIRECT_URI
+      });
+
+      writeToken({
+        ...token,
+        expires_at: Date.now() + token.expires_in * 1000
+      });
+
+      return redirect(res, `${PUBLIC_URL}/?spotify=connected`);
+    } catch (tokenError) {
+      return redirect(res, `${PUBLIC_URL}/?spotify_error=${encodeURIComponent(tokenError.message)}`);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/")) {
+    const handled = await handleApi(req, res, url);
+    if (handled !== false) return;
+    return sendJson(res, 404, { error: "Not found" });
+  }
+
+  let relativePath = url.pathname === "/" ? "index.html" : (url.pathname === "/admin" ? "admin.html" : url.pathname.slice(1));
+  relativePath = path.normalize(relativePath).replace(/^(\.\.[/\\])+/, "");
+  let filePath = path.join(publicDir, relativePath);
+
+  if (!filePath.startsWith(publicDir)) {
+    res.writeHead(403);
+    return res.end("Forbidden");
+  }
+
+  fs.stat(filePath, (error, stats) => {
+    if (!error && stats.isFile()) {
+      const extension = path.extname(filePath).toLowerCase();
+      res.writeHead(200, {
+        "Content-Type": mimeTypes[extension] || "application/octet-stream",
+        "Cache-Control": extension === ".html" ? "no-cache" : "public, max-age=3600"
+      });
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    const indexPath = path.join(publicDir, "index.html");
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-cache"
+    });
+    fs.createReadStream(indexPath).pipe(res);
+  });
+}
+
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((error) => {
+    console.error(error);
+    sendJson(res, 500, { error: "Internal server error" });
+  });
+});
+
+const websocketServer = new WebSocketServer({ server, path: "/ws" });
+
+websocketServer.on("connection", (socket) => {
+  websocketClients.add(socket);
+  setTimeout(() => {
+    broadcastQueueSnapshot(true);
+    broadcastPlaybackSnapshot(true);
+  }, 100).unref();
+  socket.send(JSON.stringify({
+    event: "connected",
+    payload: websocketStatus(),
+    sent_at: new Date().toISOString()
+  }));
+
+  socket.on("close", () => websocketClients.delete(socket));
+  socket.on("error", () => websocketClients.delete(socket));
+});
+
+const heartbeat = setInterval(() => {
+  for (const socket of websocketClients) {
+    if (socket.readyState === WebSocket.OPEN) socket.ping();
+  }
+}, 30000);
+heartbeat.unref();
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Relay v0.7.5 listening on port ${PORT}`);
+  console.log("Relay WebSocket server listening on /ws");
+  setTimeout(() => syncRealtimeSnapshots(), 750).unref();
+  const realtimeSyncTimer = setInterval(syncRealtimeSnapshots, 2000);
+  realtimeSyncTimer.unref();
+});

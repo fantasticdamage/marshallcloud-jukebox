@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d10">
+  <title>Relay</title>
+  <link rel="stylesheet" href="/styles.css?v=0.8.5">
+</head>
+<body class="relay-app">
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">RELAY</p>
+        <h1>Relay</h1>
+        <p class="brand-tagline">Add what's next.</p>
+      </div>
+      <div class="header-actions">
+        <a class="host-link" href="/admin">Host</a>
+        <button id="guestButton" class="guest-button" type="button">Requesting as Guest</button>
+        <span id="connectionBadge" class="badge">Checking Spotify</span>
+        <a id="spotifyLogin" class="button primary hidden" href="/auth/login">Connect Spotify</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="now-playing card">
+        <div class="section-heading">
+          <span class="status-dot"></span>
+          <span>Now playing</span>
+        </div>
+
+        <div class="track-layout">
+          <div class="album-art">♫</div>
+          <div class="track-copy">
+            <p class="track-title">Ready for the party</p>
+            <p class="track-artist">Sonos playback arrives in the next milestone</p>
+            <div class="progress"><div class="progress-fill"></div></div>
+            <div class="time-row"><span>0:00</span><span>0:00</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="search-panel">
+        <div class="search-heading">
+          <div>
+            <p class="eyebrow">DISCOVER</p>
+            <h2>Search Spotify</h2>
+          </div>
+        </div>
+
+        <div class="search-mode" role="group" aria-label="Search filter">
+          <button id="searchModeAll" class="search-mode-button active" type="button">All</button>
+          <button id="searchModeSong" class="search-mode-button" type="button">Song</button>
+          <button id="searchModeArtist" class="search-mode-button" type="button">Artist</button>
+          <button id="searchModeAlbum" class="search-mode-button" type="button">Album</button>
+        </div>
+        <div class="search-box">
+          <span aria-hidden="true">⌕</span>
+          <input id="search" type="search" autocomplete="off"
+                 placeholder="Search for a song or artist" disabled>
+        </div>
+
+        <p id="searchMessage" class="helper">Connect Spotify to start searching.</p>
+        <div id="results" class="results"></div>
+        <div id="searchPagination" class="search-pagination hidden">
+          <button id="searchStartOver" class="pagination-button secondary hidden" type="button">Start over</button>
+          <button id="searchMore" class="pagination-button" type="button">More results</button>
+        </div>
+      </section>
+
+      <section class="queue-section">
+        <div class="queue-heading">
+          <div>
+            <p class="eyebrow">COMING UP</p>
+            <h2>Party queue</h2>
+          </div>
+          <span id="queueCount" class="queue-count">0 songs</span>
+        </div>
+
+        <div id="queueList" class="queue-list">
+          <div class="empty-state card">
+            <div class="empty-icon">♫</div>
+            <h3>The queue is empty</h3>
+            <p>Requested songs will appear here automatically.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span id="health">Checking server…</span>
+      <span>v0.7.5</span>
+    </footer>
+  </div>
+
+  <div id="guestModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="guestTitle">
+    <div class="modal-card">
+      <p class="eyebrow">WELCOME</p>
+      <h2 id="guestTitle">What should we call you?</h2>
+      <p class="modal-copy">Your name will appear beside songs you request.</p>
+      <form id="guestForm">
+        <input id="guestNameInput" maxlength="30" autocomplete="name" placeholder="Your name" required>
+        <button class="button primary" type="submit">Continue</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js?v=0.8.5"></script>
+</body>
+</html>
