@@ -80,29 +80,95 @@ function renderTracks(tracks) {
   }
 
   searchMessage.className = "helper";
-  searchMessage.textContent = `${tracks.length} results`;
+  searchMessage.textContent = `${tracks.length} result${tracks.length === 1 ? "" : "s"}`;
 
-  for (const track of tracks) {
+  for (const [index, track] of tracks.entries()) {
     const item = document.createElement("article");
     item.className = "result";
+    item.style.setProperty("--result-index", index);
+
+    const artist = escapeHtml(track.artists || "Unknown artist");
+    const album = escapeHtml(track.album || "");
+    const title = escapeHtml(track.name || "Unknown track");
+    const artwork = track.image
+      ? `<img src="${track.image}" alt="${title} artwork" loading="lazy">`
+      : '<span class="result-art-fallback" aria-hidden="true">♫</span>';
+
     item.innerHTML = `
-      <img src="${track.image}" alt="">
-      <div>
-        <p class="result-title">
-          ${escapeHtml(track.name)}
-          ${track.explicit ? '<span class="explicit">E</span>' : ""}
-        </p>
-        <p class="result-meta">
-          ${escapeHtml(track.artists)} · ${formatDuration(track.duration_ms)}
-        </p>
+      <div class="result-art ${track.image ? "" : "result-art-empty"}">
+        ${artwork}
       </div>
-      <button class="add-button" type="button">Add</button>
+
+      <div class="result-copy">
+        <div class="result-title-row">
+          <p class="result-title">
+            ${title}
+            ${track.explicit ? '<span class="explicit">E</span>' : ""}
+          </p>
+        </div>
+
+        <p class="result-meta result-artist">${artist}</p>
+        ${album ? `<p class="result-meta result-album">${album}</p>` : ""}
+
+        <div class="result-details">
+          ${track.duration_ms ? `<span class="result-duration">${formatDuration(track.duration_ms)}</span>` : ""}
+          <span class="result-source">Spotify</span>
+        </div>
+      </div>
+
+      <button class="add-button" type="button" aria-label="Add ${title} to the queue">
+        <span class="add-button-label">Add</span>
+      </button>
     `;
+
     const addButton = item.querySelector(".add-button");
-    addButton.addEventListener("click", () => queueTrack(track, addButton));
+
+    addButton.addEventListener("click", async () => {
+      if (addButton.disabled) return;
+
+      const label = addButton.querySelector(".add-button-label");
+      addButton.disabled = true;
+      addButton.classList.add("is-adding");
+      if (label) label.textContent = "Adding…";
+
+      try {
+        await queueTrack(track, addButton);
+        addButton.classList.remove("is-adding");
+        addButton.classList.add("is-added");
+        if (label) label.textContent = "Added";
+
+        window.setTimeout(() => {
+          addButton.classList.remove("is-added");
+          addButton.disabled = false;
+          if (label) label.textContent = "Add";
+        }, 1800);
+      } catch (error) {
+        addButton.classList.remove("is-adding");
+        addButton.classList.add("is-error");
+        if (label) label.textContent = "Retry";
+
+        window.setTimeout(() => {
+          addButton.classList.remove("is-error");
+          addButton.disabled = false;
+          if (label) label.textContent = "Add";
+        }, 1800);
+      }
+    });
+
     results.appendChild(item);
   }
 }
+
+results.addEventListener("error", (event) => {
+  const image = event.target.closest(".result-art img");
+  if (!image) return;
+
+  const artwork = image.closest(".result-art");
+  if (!artwork) return;
+
+  artwork.classList.add("result-art-empty");
+  artwork.innerHTML = '<span class="result-art-fallback" aria-hidden="true">♫</span>';
+}, true);
 
 async function loadStatus() {
   try {
